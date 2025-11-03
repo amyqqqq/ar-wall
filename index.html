@@ -1,70 +1,78 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>大牆 AR</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no"/>
+<title>AR Wall – test</title>
 
-  <!-- 建議版本 -->
-  <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
-  <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+<script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
+<script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
-  <style>
-    html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace}
-    #log{position:fixed;left:8px;top:8px;white-space:pre;z-index:9;pointer-events:none}
-    #ui{position:fixed;left:0;right:0;bottom:20px;display:flex;gap:16px;justify-content:center;z-index:10}
-    button{padding:12px 18px;border-radius:12px;border:0;font-size:18px}
-    a-scene{position:fixed !important; inset:0 !important; z-index:1}
-  </style>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace}
+  #log{position:fixed;left:8px;top:8px;white-space:pre;z-index:9;pointer-events:none}
+  #ui{position:fixed;left:0;right:0;bottom:20px;display:flex;gap:16px;justify-content:center;z-index:10}
+  button{padding:12px 18px;border-radius:12px;border:0;font-size:18px}
+  /* 確保相機畫面不被遮住 */
+  a-scene{position:fixed !important; inset:0 !important; z-index:1 !important; background: transparent !important;}
+  /* 關掉 MindAR 內建轉圈圈/掃描遮罩（保險起見再隱藏一次） */
+  .mindar-ui-loading, .mindar-ui-scanning { display:none !important; }
+</style>
 </head>
 <body>
-  <div id="log">ready…</div>
 
-  <a-scene
-  id="scene"
+<div id="log">ready…</div>
+
+<a-scene id="scene"
   embedded
   vr-mode-ui="enabled: false"
-  renderer="colorManagement: true; alpha: true; antialias: true"
-  device-orientation-permission-ui="enabled: false"
-  mindar-image="imageTargetSrc: ./wall-anchors.mind; autoStart: false; uiScanning: true;"
+  renderer="alpha:true; antialias:true; colorManagement:true"
+  device-orientation-permission-ui="enabled:false"
+  mindar-image="imageTargetSrc: ./wall-anchors.mind; autoStart:false; uiLoading:false; uiScanning:false;"
   mindar-camera="facingMode: environment">
-  
+
+  <!-- 有偵測到 target 0 時顯示粉紅平面 -->
   <a-entity mindar-image-target="targetIndex: 0">
     <a-plane position="0 0 0" rotation="0 0 0" width="1" height="0.56" color="#FF0066"></a-plane>
   </a-entity>
 
-  <a-camera look-controls="enabled: false"></a-camera>
+  <a-camera look-controls="enabled:false"></a-camera>
 </a-scene>
 
+<div id="ui">
+  <button id="startBtn">啟動 AR</button>
+  <button id="stopBtn">停止</button>
+</div>
 
-  <div id="ui">
-    <button id="startBtn">啟動 AR</button>
-    <button id="stopBtn">停止</button>
-  </div>
-
- <script>
+<script>
   const scene = document.getElementById('scene');
-  const log = t => document.getElementById('log').textContent += "\n"+t;
+  const log = t=>document.getElementById('log').textContent += "\n"+t;
+  const sys = ()=>scene.systems["mindar-image-system"];
 
-  function getMindAR(){
-    return scene.systems["mindar-image-system"]; // ← 這個名稱才對
+  async function forcePlayVideo(){
+    // MindAR 建立的相機 <video> 通常是這個 id
+    const v = document.querySelector('#mindar-image-video') || document.querySelector('video');
+    if (!v) { log('! 找不到 video'); return; }
+    v.setAttribute('playsinline','true');
+    v.muted = true;
+    try { await v.play(); log('✅ video.play()'); } catch(e){ log('❌ video.play() 失敗: '+e.message); }
   }
 
   document.getElementById('startBtn').onclick = async ()=>{
     log("start…");
     try{
-      await getMindAR().start();
+      await sys().start();        // 啟動 MindAR
+      await forcePlayVideo();     // 強制播放相機串流
       log("✅ camera permission ok");
       log("✅ started");
     }catch(e){ log("❌ "+e.message); console.error(e); }
   };
 
   document.getElementById('stopBtn').onclick = async ()=>{
-    try{ await getMindAR().stop(); log("■ stopped"); }catch(e){}
+    try{ await sys().stop(); log("■ stopped"); }catch(e){}
   };
 
   scene.addEventListener("arError", e=>log("❌ arError: "+(e.detail?.message||"")));
 </script>
-
 </body>
 </html>
