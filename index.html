@@ -21,21 +21,21 @@
   <div id="log">ready…</div>
 
   <a-scene
-    id="scene"
-    embedded
-    vr-mode-ui="enabled: false"
-    renderer="alpha: true; antialias: true"
-    device-orientation-permission-ui="enabled: false"
-    mindar-image="imageTargetSrc: ./wall-anchors.mind; autoStart: false; uiScanning: true;"
-    mindar-camera="facingMode: environment">
+  id="scene"
+  embedded
+  vr-mode-ui="enabled: false"
+  renderer="colorManagement: true; alpha: true; antialias: true"
+  device-orientation-permission-ui="enabled: false"
+  mindar-image="imageTargetSrc: ./wall-anchors.mind; autoStart: false; uiScanning: true;"
+  mindar-camera="facingMode: environment">
+  
+  <a-entity mindar-image-target="targetIndex: 0">
+    <a-plane position="0 0 0" rotation="0 0 0" width="1" height="0.56" color="#FF0066"></a-plane>
+  </a-entity>
 
-    <!-- 偵測到 target 0 時顯示一個平面，確認有綁到追蹤 -->
-    <a-entity mindar-image-target="targetIndex: 0">
-      <a-plane position="0 0 0" rotation="0 0 0" width="1" height="0.56" color="#FF0066"></a-plane>
-    </a-entity>
+  <a-camera look-controls="enabled: false"></a-camera>
+</a-scene>
 
-    <a-camera look-controls="enabled: false"></a-camera>
-  </a-scene>
 
   <div id="ui">
     <button id="startBtn">啟動 AR</button>
