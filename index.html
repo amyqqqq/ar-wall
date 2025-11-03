@@ -1,78 +1,189 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no"/>
-<title>AR Wall – test</title>
-
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>大牆 AR｜單錨鎖定＋校正</title>
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-
 <style>
   html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace}
-  #log{position:fixed;left:8px;top:8px;white-space:pre;z-index:9;pointer-events:none}
-  #ui{position:fixed;left:0;right:0;bottom:20px;display:flex;gap:16px;justify-content:center;z-index:10}
-  button{padding:12px 18px;border-radius:12px;border:0;font-size:18px}
-  /* 確保相機畫面不被遮住 */
-  a-scene{position:fixed !important; inset:0 !important; z-index:1 !important; background: transparent !important;}
-  /* 關掉 MindAR 內建轉圈圈/掃描遮罩（保險起見再隱藏一次） */
-  .mindar-ui-loading, .mindar-ui-scanning { display:none !important; }
+  #top{position:fixed;left:8px;top:8px;z-index:20}
+  #log{position:fixed;left:8px;bottom:8px;right:8px;height:120px;overflow:auto;
+       background:rgba(0,0,0,.5);padding:8px;z-index:20;font-size:12px}
+  #ctrl{position:fixed;left:8px;bottom:140px;z-index:20;background:rgba(0,0,0,.5);
+        border-radius:10px;padding:8px;display:none}
+  #ctrl button{margin:2px 3px;padding:8px 12px}
+  .row{margin:4px 0}
 </style>
 </head>
 <body>
-
-<div id="log">ready…</div>
-
-<a-scene id="scene"
-  embedded
-  vr-mode-ui="enabled: false"
-  renderer="alpha:true; antialias:true; colorManagement:true"
-  device-orientation-permission-ui="enabled:false"
-  mindar-image="imageTargetSrc: ./wall-anchors.mind; autoStart:false; uiLoading:false; uiScanning:false;"
-  mindar-camera="facingMode: environment">
-
-  <!-- 有偵測到 target 0 時顯示粉紅平面 -->
-  <a-entity mindar-image-target="targetIndex: 0">
-    <a-plane position="0 0 0" rotation="0 0 0" width="1" height="0.56" color="#FF0066"></a-plane>
-  </a-entity>
-
-  <a-camera look-controls="enabled:false"></a-camera>
-</a-scene>
-
-<div id="ui">
-  <button id="startBtn">啟動 AR</button>
-  <button id="stopBtn">停止</button>
+<div id="top">
+  <button id="btnStart">啟動 AR</button>
+  <span id="status">未啟動</span>
 </div>
 
+<div id="ctrl">
+  <div class="row">
+    位置：<button onclick="nudge(-step,0)">←</button>
+    <button onclick="nudge(step,0)">→</button>
+    <button onclick="nudge(0,step)">↑</button>
+    <button onclick="nudge(0,-step)">↓</button>
+  </div>
+  <div class="row">
+    旋轉Z：<button onclick="rot(-rotStep)">↺</button>
+    <button onclick="rot(rotStep)">↻</button>
+  </div>
+  <div class="row">
+    尺寸：<button onclick="scaleMul(0.98)">縮小</button>
+    <button onclick="scaleMul(1.02)">放大</button>
+  </div>
+  <div class="row">
+    精度：
+    <button onclick="setFine()">細</button>
+    <button onclick="setCoarse()">粗</button>
+    <button onclick="resetAdj()">重置微調</button>
+    <button onclick="saveCfg()">💾 儲存</button>
+    <button onclick="reload()">重新載入</button>
+  </div>
+</div>
+
+<div id="log"></div>
+
+<a-scene
+  embedded
+  color-space="sRGB"
+  vr-mode-ui="enabled:false"
+  device-orientation-permission-ui="enabled:false"
+  mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1;">
+  <a-assets>
+    <video id="vid" src="./video.mp4" loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+  </a-assets>
+
+  <!-- 單一錨點（左段中間那塊圖案） -->
+  <a-entity id="marker" mindar-image-target="targetIndex: 0"></a-entity>
+
+  <!-- 鎖定後的牆面影片（不掛在 marker 下） -->
+  <a-entity id="wallPlane" visible="false">
+    <!-- 牆寬 15.14m；影片高依 3840x832 比例 = 3.283m -->
+    <a-video id="wallVideo" src="#vid" width="15.14" height="3.283"
+             material="shader: flat; side: double;" position="0 0 0"></a-video>
+  </a-entity>
+
+  <a-entity camera></a-entity>
+</a-scene>
+
 <script>
-  const scene = document.getElementById('scene');
-  const log = t=>document.getElementById('log').textContent += "\n"+t;
-  const sys = ()=>scene.systems["mindar-image-system"];
+const logEl = document.getElementById('log');
+const log = s=>{console.log(s); logEl.textContent += s+"\n"; logEl.scrollTop = logEl.scrollHeight;}
+const statusEl = document.getElementById('status');
+const btnStart = document.getElementById('btnStart');
+const ctrl = document.getElementById('ctrl');
 
-  async function forcePlayVideo(){
-    // MindAR 建立的相機 <video> 通常是這個 id
-    const v = document.querySelector('#mindar-image-video') || document.querySelector('video');
-    if (!v) { log('! 找不到 video'); return; }
-    v.setAttribute('playsinline','true');
-    v.muted = true;
-    try { await v.play(); log('✅ video.play()'); } catch(e){ log('❌ video.play() 失敗: '+e.message); }
+const scene = document.querySelector('a-scene');
+const marker = document.getElementById('marker');
+const wall   = document.getElementById('wallPlane');
+const video  = document.getElementById('vid');
+
+let locked = false;
+
+/* ===== 牆與錨點幾何設定（可依現場改） ===== */
+const WALL_W = 15.14;     // 牆寬（公尺）
+const WALL_H = 3.283;     // 影片高（公尺）—依 3840x832 比例算出
+// 錨點在牆「左下角」座標系中的位置（公尺）—你的圖示：左 1.73 m、上 0.46 m → 相對左下角是 (1.73, 0.46)
+const ANCHOR_X = 1.73;
+const ANCHOR_Y = 0.46;
+
+/* ===== 現場微調（存 localStorage） ===== */
+const LS_KEY = 'WALL_AR_LOCK_V2';
+let adj = JSON.parse(localStorage.getItem(LS_KEY) || '{"ox":0,"oy":0,"rz":0,"s":1}');
+let step = 0.05, rotStep = 1.5;   // 初始為「細」；可切換粗
+
+function applyAdj(){
+  // 位置微調（沿著影片局部座標的右與上）
+  const q = wall.object3D.quaternion;
+  const right = new THREE.Vector3(1,0,0).applyQuaternion(q);
+  const up    = new THREE.Vector3(0,1,0).applyQuaternion(q);
+  // 先移回基準（鎖定時的中心），再疊加微調
+  wall.object3D.position.addScaledVector(right, adj.ox);
+  wall.object3D.position.addScaledVector(up,    adj.oy);
+  wall.object3D.rotateZ(THREE.MathUtils.degToRad(adj.rz));
+  wall.object3D.scale.multiplyScalar(adj.s);
+}
+function nudge(dx,dy){ adj.ox += dx; adj.oy += dy; applyResetPose(); }
+function rot(d){ adj.rz += d; applyResetPose(); }
+function scaleMul(m){ adj.s *= m; applyResetPose(); }
+function setFine(){ step=0.02; rotStep=0.8; log('精度=細'); }
+function setCoarse(){ step=0.10; rotStep=3; log('精度=粗'); }
+function saveCfg(){ localStorage.setItem(LS_KEY, JSON.stringify(adj)); log('已儲存設定：'+JSON.stringify(adj)); }
+function resetAdj(){ adj={ox:0,oy:0,rz:0,s:1}; applyResetPose(); log('已重置微調'); }
+function reload(){ location.reload(); }
+
+/* 重新套用：先回到鎖定基準位姿，再套 adj */
+function applyResetPose(){
+  if(!basePose) return;
+  wall.object3D.position.copy(basePose.pos);
+  wall.object3D.quaternion.copy(basePose.quat);
+  wall.object3D.scale.copy(basePose.scl);
+  applyAdj();
+}
+
+/* ===== 鎖定：從錨點推回牆中心 ===== */
+let basePose = null; // {pos, quat, scl}
+scene.addEventListener('targetFound', ()=>{
+  if(locked) return;
+  log('找到錨點 → 取得位姿並鎖定');
+  video.play().catch(()=>{});
+
+  // 1) 用錨點當下的世界矩陣初始化 wall
+  const m = marker.object3D.matrixWorld.clone();
+  wall.object3D.matrix.copy(m);
+  wall.object3D.matrix.decompose(wall.object3D.position, wall.object3D.quaternion, wall.object3D.scale);
+
+  // 2) 讓 wall 的尺寸以 <a-video> 的 width/height 為主（不再等比縮放）
+  wall.object3D.scale.set(1,1,1);
+
+  // 3) 由錨點推回「影片平面中心」的位置（沿著 wall 的局部軸）
+  //    中心位於( W/2, H/2 )；錨點位於( ANCHOR_X, ANCHOR_Y )
+  const dx = (WALL_W/2 - ANCHOR_X);     // 右為 +X
+  const dy = (ANCHOR_Y - WALL_H/2);     // 上為 +Y（所以錨點在下方時為負）
+  const q = wall.object3D.quaternion;
+  const right = new THREE.Vector3(1,0,0).applyQuaternion(q);
+  const up    = new THREE.Vector3(0,1,0).applyQuaternion(q);
+  wall.object3D.position.addScaledVector(right, dx);
+  wall.object3D.position.addScaledVector(up,    dy);
+
+  wall.setAttribute('visible','true');
+  locked = true;
+  statusEl.textContent = '已鎖定，可校正並儲存';
+
+  // 記錄鎖定的基準位姿（之後每次微調都從此還原再套 adj）
+  basePose = {
+    pos:  wall.object3D.position.clone(),
+    quat: wall.object3D.quaternion.clone(),
+    scl:  wall.object3D.scale.clone()
+  };
+
+  // 套用已保存的微調
+  applyAdj();
+  ctrl.style.display = 'block';
+});
+
+btnStart.onclick = async ()=>{
+  try{
+    await scene.systems['mindar-image'].start();
+    statusEl.textContent = '請對準錨點（左段中間那塊圖案）';
+    log('AR 已啟動');
+  }catch(e){
+    statusEl.textContent = '啟動失敗';
+    log('啟動失敗：'+e);
   }
+};
 
-  document.getElementById('startBtn').onclick = async ()=>{
-    log("start…");
-    try{
-      await sys().start();        // 啟動 MindAR
-      await forcePlayVideo();     // 強制播放相機串流
-      log("✅ camera permission ok");
-      log("✅ started");
-    }catch(e){ log("❌ "+e.message); console.error(e); }
-  };
-
-  document.getElementById('stopBtn').onclick = async ()=>{
-    try{ await sys().stop(); log("■ stopped"); }catch(e){}
-  };
-
-  scene.addEventListener("arError", e=>log("❌ arError: "+(e.detail?.message||"")));
+scene.addEventListener('loaded', ()=>{
+  log('就緒：按「啟動 AR」，掃錨點 → 自動鎖定 → 用面板微調、儲存。');
+  setFine();
+});
 </script>
 </body>
 </html>
