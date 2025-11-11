@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>大牆 AR｜單錨鎖定＋校正（鏡頭可見＋等待相機節點）</title>
+<title>大牆 AR｜單錨鎖定＋校正（不依賴 #mindar-* 選取器）</title>
 
 <!-- A-Frame -> MindAR（順序很重要） -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
@@ -12,10 +12,10 @@
 <style>
   html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
 
-  /* 鏡頭滿版與層級 */
+  /* 滿版與層級 */
   a-scene{position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:1 !important}
-  #mindar-image-video,
-  #mindar-image-canvas{
+  /* MindAR 相機畫面（稍後用 JS 套到正確的 <video>/<canvas> 上） */
+  .cam-fit{
     position:fixed !important; inset:0 !important;
     width:100vw !important; height:100vh !important;
     object-fit:cover !important; transform:none !important;
@@ -24,7 +24,7 @@
   canvas.a-canvas{
     width:100vw !important; height:100vh !important;
     background:transparent !important; z-index:1 !important;
-    pointer-events:none !important; /* 不擋點擊 */
+    pointer-events:none !important;
   }
 
   /* 隱藏 MindAR 內建遮罩/圈圈（避免擋鏡頭） */
@@ -149,7 +149,7 @@ async function waitSceneLoaded(el){
 }
 async function ensureCameraPermission(){
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('此瀏覽器不支援 getUserMedia');
+    throw new Error('此瀏覽器不支援 getUserMedia 或未允許相機');
   }
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: "environment" } }, audio: false
@@ -157,16 +157,31 @@ async function ensureCameraPermission(){
   stream.getTracks().forEach(t => t.stop());
 }
 
-/* 等待 MindAR 把相機 <video>/<canvas> 放進 DOM */
-async function waitForCameraNodes(timeoutMs = 8000){
+/* ====== 找出 MindAR 插入的 <video>/<canvas>（不靠固定 id） ====== */
+async function waitForCameraNodesFlexible(timeoutMs = 10000){
   const t0 = performance.now();
   return await new Promise((resolve, reject)=>{
     const tick = ()=>{
-      const v = document.querySelector('#mindar-image-video');
-      const c = document.querySelector('#mindar-image-canvas');
-      if (v && c) return resolve({v, c});
+      // 候選 video：具有 srcObject（MediaStream）的，且不是我們的 #vid
+      const videos = Array.from(document.querySelectorAll('video'));
+      const camVideos = videos.filter(v => v !== video && 'srcObject' in v && v.srcObject);
+      // 候選 canvas：不是 A-Frame 的 .a-canvas，且面積 > 0，且靠近相機 video
+      const canvases = Array.from(document.querySelectorAll('canvas'));
+      const nonAFrameCanvases = canvases.filter(c => !c.classList.contains('a-canvas') && c.width*c.height >= 1);
+
+      // 嘗試就近配對：找與相機 video 同父層或相鄰的 canvas
+      let pickV = camVideos[0] || null;
+      let pickC = null;
+      if (pickV){
+        const siblings = new Set(pickV.parentElement ? Array.from(pickV.parentElement.querySelectorAll('canvas')) : []);
+        pickC = Array.from(siblings).find(c => !c.classList.contains('a-canvas')) || nonAFrameCanvases[0] || null;
+      }
+
+      if (pickV && pickC){
+        return resolve({v: pickV, c: pickC, allVideos: videos.length, camVideos: camVideos.length, allCanvases: canvases.length});
+      }
       if (performance.now() - t0 > timeoutMs) {
-        return reject(new Error('camera nodes not found'));
+        return reject(new Error(`camera nodes not found (videos=${videos.length}, camVideos=${camVideos.length}, canvases=${canvases.length})`));
       }
       requestAnimationFrame(tick);
     };
@@ -197,22 +212,13 @@ btnStart.onclick = async ()=>{
     statusEl.textContent = '請對準錨點';
     log('✅ AR 已啟動，等待 targetFound…');
 
-    /* === 關鍵：等到相機節點出現再處理樣式與偵錯 === */
+    /* === 關鍵：不依賴固定 id，彈性尋找相機節點 === */
     try{
-      const {v, c} = await waitForCameraNodes();
-      log('📷 找到相機節點');
-      [v, c].forEach(el=>{
-        el.style.position='fixed';
-        el.style.inset='0';
-        el.style.width='100vw';
-        el.style.height='100vh';
-        el.style.objectFit='cover';
-        el.style.transform='none';
-        el.style.zIndex=0;
-        el.style.opacity=1;
-        el.style.display='block';
-      });
+      const {v, c, allVideos, camVideos, allCanvases} = await waitForCameraNodesFlexible();
+      log(`📷 找到相機節點（videos:${allVideos} camVideos:${camVideos} canvases:${allCanvases}）`);
+      [v, c].forEach(el=> el.classList.add('cam-fit'));
 
+      // 設置事件以便觀測相機狀態
       v.addEventListener('loadedmetadata', ()=>{
         log(`📷 相機啟動：${v.videoWidth}x${v.videoHeight}`);
       });
@@ -221,6 +227,7 @@ btnStart.onclick = async ()=>{
         if(v.readyState>=2) clearInterval(timer);
       },1000);
 
+      // 視窗改變時維持滿版
       window.addEventListener('resize', ()=>{
         [v, c].forEach(el=>{
           el.style.width='100vw';
@@ -228,7 +235,9 @@ btnStart.onclick = async ()=>{
         });
       });
     }catch(e){
+      statusEl.textContent = '啟動中（未找到相機節點）';
       log('🟥 相機節點逾時：'+e.message);
+      log('🟨 提示：若使用內建瀏覽器（LINE/IG/FB）請改用 Chrome；或確認此站點的相機權限為「允許」。');
     }
 
   }catch(e){
