@@ -11,40 +11,39 @@
 
 <style>
   html,body{
-    margin:0;
-    height:100%;
-    background:#000;
-    color:#0f0;
-    font-family:monospace;
+    margin:0; height:100%;
+    background:#000; color:#0f0; font-family:monospace;
     overflow:hidden;
   }
 
   /* ====== 鏡頭滿版置中 ====== */
-  a-scene {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
+  a-scene{
+    position:fixed !important; inset:0 !important;
+    width:100vw !important; height:100vh !important;
   }
   #mindar-image-video,
-  #mindar-image-canvas {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    object-fit: cover !important;
-    transform: none !important;
+  #mindar-image-canvas{
+    position:fixed !important; inset:0 !important;
+    width:100vw !important; height:100vh !important;
+    object-fit:cover !important; transform:none !important;
   }
-  canvas.a-canvas {
-    width: 100vw !important;
-    height: 100vh !important;
+  canvas.a-canvas{
+    width:100vw !important; height:100vh !important;
+    background:transparent !important; /* 讓 3D 畫布透明 */
   }
 
+  /* 可選：隱藏 MindAR 內建載入圈圈 */
+  .mindar-ui-loading{ display:none !important; }
+
   #top{position:fixed;left:8px;top:8px;z-index:20}
-  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;
-       background:rgba(0,0,0,.55);padding:8px;z-index:20;font-size:12px;line-height:1.25}
-  #ctrl{position:fixed;left:8px;bottom:160px;z-index:20;background:rgba(0,0,0,.5);
-        border-radius:10px;padding:8px;display:none}
+  #log{
+    position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;
+    background:rgba(0,0,0,.55);padding:8px;z-index:20;font-size:12px;line-height:1.25
+  }
+  #ctrl{
+    position:fixed;left:8px;bottom:160px;z-index:20;background:rgba(0,0,0,.5);
+    border-radius:10px;padding:8px;display:none
+  }
   #ctrl button{margin:2px 3px;padding:8px 12px}
   .row{margin:4px 0}
 </style>
@@ -87,7 +86,9 @@
   color-space="sRGB"
   vr-mode-ui="enabled:false"
   device-orientation-permission-ui="enabled:false"
-  mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1;">
+  mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1;"
+  renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true">
+
   <a-assets>
     <video id="vid" src="./video.mp4" loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
   </a-assets>
@@ -101,7 +102,8 @@
              material="shader: flat; side: double;" position="0 0 0"></a-video>
   </a-entity>
 
-  <a-entity camera></a-entity>
+  <!-- 後鏡頭 -->
+  <a-entity camera="facingMode: environment"></a-entity>
 </a-scene>
 
 <script>
@@ -116,7 +118,7 @@ const wall   = document.getElementById('wallPlane');
 const video  = document.getElementById('vid');
 let locked = false;
 
-/* 牆面幾何 */
+/* 牆面幾何（單位：公尺） */
 const WALL_W = 15.14;
 const WALL_H = 3.283;
 const ANCHOR_X = 1.73;
