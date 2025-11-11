@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>大牆 AR｜單錨鎖定＋校正（相機強韌顯示版）</title>
+<title>大牆 AR｜單錨鎖定＋校正（直接掛 arSystem.video）</title>
 
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
@@ -11,15 +11,17 @@
 <style>
   html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
   a-scene{position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:1}
-  /* 讓 A-Frame 畫布透明、不擋點 */
+  /* A-Frame 畫布透明，避免黑底 */
   canvas.a-canvas{width:100vw !important;height:100vh !important;background:transparent !important;pointer-events:none !important;z-index:1}
-  /* MindAR 可能出現的遮罩/圈圈全部關掉 */
-  .mindar-ui-loading,.mindar-ui-scanning{display:none !important}
-  /* 套到相機 <video> / 非 A-Frame 的處理 canvas */
-  .cam-fit{
-    position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;
-    object-fit:cover !important;transform:none !important;z-index:0 !important;opacity:1 !important;display:block !important;
+  /* 直接掛在 DOM 的相機 video 專用樣式 */
+  #bgCam{
+    position:fixed; left:0; top:0; width:100vw; height:100vh;
+    object-fit:cover; z-index:0; display:block; opacity:1;
+    transform:none !important;
   }
+  /* 關掉 MindAR 內建遮罩/圈圈 */
+  .mindar-ui-loading,.mindar-ui-scanning{display:none !important}
+
   #top{position:fixed;left:8px;top:8px;z-index:10}
   #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:10;font-size:12px;line-height:1.25}
   #ctrl{position:fixed;left:8px;bottom:160px;z-index:10;background:rgba(0,0,0,.5);border-radius:10px;padding:8px;display:none}
@@ -28,6 +30,9 @@
 </style>
 </head>
 <body>
+<!-- 我們自己放一支 <video> 當背景，之後把 arSystem.video 指過來 -->
+<video id="bgCam" autoplay muted playsinline webkit-playsinline></video>
+
 <div id="top">
   <button id="btnStart">啟動 AR</button>
   <span id="status">未啟動</span>
@@ -75,7 +80,8 @@ const ctrl = document.getElementById('ctrl');
 const scene = document.querySelector('a-scene');
 const marker = document.getElementById('marker');
 const wall   = document.getElementById('wallPlane');
-const videoEl= document.getElementById('vid');
+const videoOverlay = document.getElementById('vid');
+const bgCam = document.getElementById('bgCam');
 let locked = false;
 
 /* 幾何 */
@@ -115,19 +121,7 @@ async function ensureCam(){
   s.getTracks().forEach(t=>t.stop());
 }
 
-/* —— 關鍵：把「所有 srcObject 的 video」與「所有非 .a-canvas 的 canvas」都套 cam-fit —— */
-function styleCameraLayers(){
-  const videos=[...document.querySelectorAll('video')].filter(v=>v!==videoEl && v.srcObject);
-  const canvases=[...document.querySelectorAll('canvas')].filter(c=>!c.classList.contains('a-canvas'));
-  videos.forEach(v=>v.classList.add('cam-fit'));
-  canvases.forEach(c=>c.classList.add('cam-fit'));
-  if(videos.length) log(`📷 相機 video 數：${videos.length}（已套 cam-fit）`);
-  if(canvases.length) log(`🖼️ 處理 canvas 數：${canvases.length}（已套 cam-fit）`);
-}
-
-/* 監看 DOM，MindAR 插入節點就立即套樣式 */
-const mo = new MutationObserver(()=>styleCameraLayers());
-
+/* 啟動流程 */
 btnStart.onclick = async ()=>{
   try{
     statusEl.textContent='請授權相機…';
@@ -138,33 +132,59 @@ btnStart.onclick = async ()=>{
     const arSystem = scene.systems['mindar-image-system'] || scene.systems['mindar-image'] || (scene.components['mindar-image']?.system);
     if(!arSystem?.start){ statusEl.textContent='啟動失敗（MindAR 未初始化）'; log('🟥 MindAR system not ready'); return; }
 
-    // 開始監看（整個 body）
-    mo.observe(document.body,{childList:true,subtree:true});
     await arSystem.start();
-
     statusEl.textContent='請對準錨點';
     log('✅ AR 已啟動，等待 targetFound…');
-    styleCameraLayers(); // 先嘗試一次
+
+    /* === 直接把 MindAR 的 video 掛到我們的 <video id="bgCam"> 上 === */
+    if (arSystem.video){
+      // 有些瀏覽器不能把同一個 MediaStream 同時用兩個 <video>，我們把 DOM 裡的 arSystem.video 移到外層並改 id
+      try{
+        arSystem.video.setAttribute('id','bgCam');
+        arSystem.video.setAttribute('playsinline','');
+        arSystem.video.setAttribute('webkit-playsinline','');
+        arSystem.video.muted = true;
+        document.body.prepend(arSystem.video);  // 放到最底層
+      }catch(_){}
+      // 保險：若無法移動，就把 stream 指給我們的 bgCam
+      if (arSystem.video.srcObject && bgCam !== arSystem.video){
+        try{ bgCam.srcObject = arSystem.video.srcObject; }catch(_){}
+      }
+    }
+
+    // 無論是哪個 video，套滿版樣式
+    const camV = document.getElementById('bgCam');
+    if (camV){
+      camV.style.position='fixed'; camV.style.left='0'; camV.style.top='0';
+      camV.style.width='100vw'; camV.style.height='100vh';
+      camV.style.objectFit='cover'; camV.style.zIndex='0'; camV.style.transform='none';
+      camV.addEventListener('loadedmetadata',()=>{ log(`📷 相機啟動：${camV.videoWidth}x${camV.videoHeight}`); });
+    } else{
+      log('🟥 取得 arSystem.video 失敗');
+    }
+
   }catch(e){
     statusEl.textContent='啟動失敗';
     log('🟥 啟動失敗：'+e.name+' / '+e.message);
   }
 };
 
-/* targetFound → 鎖定牆面 */
+/* 錨點 → 鎖定牆面 */
 scene.addEventListener('targetFound', ()=>{
   if(locked) return;
   log('🎯 找到錨點 → 鎖定位姿');
-  videoEl.play().catch(()=>{});
+  videoOverlay.play().catch(()=>{});
   const m=marker.object3D.matrixWorld.clone();
   wall.object3D.matrix.copy(m);
   wall.object3D.matrix.decompose(wall.object3D.position,wall.object3D.quaternion,wall.object3D.scale);
   wall.object3D.scale.set(1,1,1);
+
   const q=wall.object3D.quaternion;
   const right=new THREE.Vector3(1,0,0).applyQuaternion(q);
   const up   =new THREE.Vector3(0,1,0).applyQuaternion(q);
   wall.object3D.position.addScaledVector(right,(WALL_W/2-ANCHOR_X));
   wall.object3D.position.addScaledVector(up,(ANCHOR_Y-WALL_H/2));
+
   wall.setAttribute('visible','true');
   locked=true; statusEl.textContent='已鎖定，可校正並儲存';
   basePose={pos:wall.object3D.position.clone(),quat:wall.object3D.quaternion.clone(),scl:wall.object3D.scale.clone()};
