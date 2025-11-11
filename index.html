@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>大牆 AR｜單錨鎖定＋校正（鏡頭可見版）</title>
+<title>大牆 AR｜單錨鎖定＋校正（鏡頭可見＋等待相機節點）</title>
 
 <!-- A-Frame -> MindAR（順序很重要） -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
@@ -157,6 +157,23 @@ async function ensureCameraPermission(){
   stream.getTracks().forEach(t => t.stop());
 }
 
+/* 等待 MindAR 把相機 <video>/<canvas> 放進 DOM */
+async function waitForCameraNodes(timeoutMs = 8000){
+  const t0 = performance.now();
+  return await new Promise((resolve, reject)=>{
+    const tick = ()=>{
+      const v = document.querySelector('#mindar-image-video');
+      const c = document.querySelector('#mindar-image-canvas');
+      if (v && c) return resolve({v, c});
+      if (performance.now() - t0 > timeoutMs) {
+        return reject(new Error('camera nodes not found'));
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
 /* ====== Start AR ====== */
 btnStart.onclick = async ()=>{
   try{
@@ -180,12 +197,11 @@ btnStart.onclick = async ()=>{
     statusEl.textContent = '請對準錨點';
     log('✅ AR 已啟動，等待 targetFound…');
 
-    /* 鏡頭元素偵錯＋滿版修正 */
-    const fixCamFit = () => {
-      const v = document.querySelector('#mindar-image-video');
-      const c = document.querySelector('#mindar-image-canvas');
-      [v,c].forEach(el=>{
-        if(!el) return;
+    /* === 關鍵：等到相機節點出現再處理樣式與偵錯 === */
+    try{
+      const {v, c} = await waitForCameraNodes();
+      log('📷 找到相機節點');
+      [v, c].forEach(el=>{
         el.style.position='fixed';
         el.style.inset='0';
         el.style.width='100vw';
@@ -196,12 +212,7 @@ btnStart.onclick = async ()=>{
         el.style.opacity=1;
         el.style.display='block';
       });
-    };
-    fixCamFit(); window.addEventListener('resize', fixCamFit);
 
-    const v = document.querySelector('#mindar-image-video');
-    if(!v){ log('🟥 找不到 #mindar-image-video'); }
-    else{
       v.addEventListener('loadedmetadata', ()=>{
         log(`📷 相機啟動：${v.videoWidth}x${v.videoHeight}`);
       });
@@ -209,6 +220,15 @@ btnStart.onclick = async ()=>{
         log(`📷 readyState=${v.readyState} paused=${v.paused}`);
         if(v.readyState>=2) clearInterval(timer);
       },1000);
+
+      window.addEventListener('resize', ()=>{
+        [v, c].forEach(el=>{
+          el.style.width='100vw';
+          el.style.height='100vh';
+        });
+      });
+    }catch(e){
+      log('🟥 相機節點逾時：'+e.message);
     }
 
   }catch(e){
