@@ -169,27 +169,43 @@ btnStart.onclick = async ()=>{
   }
 };
 
-/* 錨點 → 鎖定牆面 */
-scene.addEventListener('targetFound', ()=>{
-  if(locked) return;
+// ✅ 綁在錨點 entity
+marker.addEventListener('targetFound', ()=>{
   log('🎯 找到錨點 → 鎖定位姿');
   videoOverlay.play().catch(()=>{});
-  const m=marker.object3D.matrixWorld.clone();
+  const m = marker.object3D.matrixWorld.clone();
   wall.object3D.matrix.copy(m);
-  wall.object3D.matrix.decompose(wall.object3D.position,wall.object3D.quaternion,wall.object3D.scale);
+  wall.object3D.matrix.decompose(
+    wall.object3D.position, wall.object3D.quaternion, wall.object3D.scale
+  );
   wall.object3D.scale.set(1,1,1);
 
-  const q=wall.object3D.quaternion;
-  const right=new THREE.Vector3(1,0,0).applyQuaternion(q);
-  const up   =new THREE.Vector3(0,1,0).applyQuaternion(q);
-  wall.object3D.position.addScaledVector(right,(WALL_W/2-ANCHOR_X));
-  wall.object3D.position.addScaledVector(up,(ANCHOR_Y-WALL_H/2));
+  // 依你牆面座標做平移
+  const q = wall.object3D.quaternion;
+  const right = new THREE.Vector3(1,0,0).applyQuaternion(q);
+  const up    = new THREE.Vector3(0,1,0).applyQuaternion(q);
+  const dx = (WALL_W/2 - ANCHOR_X);
+  const dy = (ANCHOR_Y - WALL_H/2);
+  wall.object3D.position.addScaledVector(right, dx);
+  wall.object3D.position.addScaledVector(up,    dy);
 
   wall.setAttribute('visible','true');
-  locked=true; statusEl.textContent='已鎖定，可校正並儲存';
-  basePose={pos:wall.object3D.position.clone(),quat:wall.object3D.quaternion.clone(),scl:wall.object3D.scale.clone()};
-  applyResetPose(); ctrl.style.display='block';
+  locked = true;
+  statusEl.textContent = '已鎖定，可校正並儲存';
+  basePose = {
+    pos: wall.object3D.position.clone(),
+    quat: wall.object3D.quaternion.clone(),
+    scl: wall.object3D.scale.clone()
+  };
+  applyResetPose();
+  ctrl.style.display = 'block';
 });
+
+// 建議加上 lost 便於除錯
+marker.addEventListener('targetLost', ()=>{
+  log('🟡 targetLost');
+});
+
 
 scene.addEventListener('loaded', ()=>{
   log('就緒：按「啟動 AR」→ 授權相機 → 對準錨點 → 自動鎖定 → 微調儲存。');
