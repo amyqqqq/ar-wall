@@ -3,38 +3,26 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>大牆 AR｜單錨鎖定＋校正（不依賴 #mindar-* 選取器）</title>
+<title>大牆 AR｜單錨鎖定＋校正（相機強韌顯示版）</title>
 
-<!-- A-Frame -> MindAR（順序很重要） -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
 <style>
   html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
-
-  /* 滿版與層級 */
-  a-scene{position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:1 !important}
-  /* MindAR 相機畫面（稍後用 JS 套到正確的 <video>/<canvas> 上） */
+  a-scene{position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:1}
+  /* 讓 A-Frame 畫布透明、不擋點 */
+  canvas.a-canvas{width:100vw !important;height:100vh !important;background:transparent !important;pointer-events:none !important;z-index:1}
+  /* MindAR 可能出現的遮罩/圈圈全部關掉 */
+  .mindar-ui-loading,.mindar-ui-scanning{display:none !important}
+  /* 套到相機 <video> / 非 A-Frame 的處理 canvas */
   .cam-fit{
-    position:fixed !important; inset:0 !important;
-    width:100vw !important; height:100vh !important;
-    object-fit:cover !important; transform:none !important;
-    z-index:0 !important; opacity:1 !important; display:block !important;
+    position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;
+    object-fit:cover !important;transform:none !important;z-index:0 !important;opacity:1 !important;display:block !important;
   }
-  canvas.a-canvas{
-    width:100vw !important; height:100vh !important;
-    background:transparent !important; z-index:1 !important;
-    pointer-events:none !important;
-  }
-
-  /* 隱藏 MindAR 內建遮罩/圈圈（避免擋鏡頭） */
-  .mindar-ui-loading, .mindar-ui-scanning{ display:none !important; }
-
   #top{position:fixed;left:8px;top:8px;z-index:10}
-  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;
-       background:rgba(0,0,0,.55);padding:8px;z-index:10;font-size:12px;line-height:1.25}
-  #ctrl{position:fixed;left:8px;bottom:160px;z-index:10;background:rgba(0,0,0,.5);
-        border-radius:10px;padding:8px;display:none}
+  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:10;font-size:12px;line-height:1.25}
+  #ctrl{position:fixed;left:8px;bottom:160px;z-index:10;background:rgba(0,0,0,.5);border-radius:10px;padding:8px;display:none}
   #ctrl button{margin:2px 3px;padding:8px 12px}
   .row{margin:4px 0}
 </style>
@@ -47,36 +35,21 @@
 
 <div id="ctrl">
   <div class="row">
-    位置：<button onclick="nudge(-step,0)">←</button>
-    <button onclick="nudge(step,0)">→</button>
-    <button onclick="nudge(0,step)">↑</button>
-    <button onclick="nudge(0,-step)">↓</button>
+    位置：<button onclick="nudge(-step,0)">←</button><button onclick="nudge(step,0)">→</button>
+    <button onclick="nudge(0,step)">↑</button><button onclick="nudge(0,-step)">↓</button>
   </div>
+  <div class="row">旋轉Z：<button onclick="rot(-rotStep)">↺</button><button onclick="rot(rotStep)">↻</button></div>
+  <div class="row">尺寸：<button onclick="scaleMul(0.98)">縮小</button><button onclick="scaleMul(1.02)">放大</button></div>
   <div class="row">
-    旋轉Z：<button onclick="rot(-rotStep)">↺</button>
-    <button onclick="rot(rotStep)">↻</button>
-  </div>
-  <div class="row">
-    尺寸：<button onclick="scaleMul(0.98)">縮小</button>
-    <button onclick="scaleMul(1.02)">放大</button>
-  </div>
-  <div class="row">
-    精度：
-    <button onclick="setFine()">細</button>
-    <button onclick="setCoarse()">粗</button>
-    <button onclick="resetAdj()">重置微調</button>
-    <button onclick="saveCfg()">💾 儲存</button>
-    <button onclick="reload()">重新載入</button>
+    精度：<button onclick="setFine()">細</button><button onclick="setCoarse()">粗</button>
+    <button onclick="resetAdj()">重置微調</button><button onclick="saveCfg()">💾 儲存</button><button onclick="reload()">重新載入</button>
   </div>
 </div>
 
 <div id="log"></div>
 
 <a-scene
-  embedded
-  color-space="sRGB"
-  vr-mode-ui="enabled:false"
-  device-orientation-permission-ui="enabled:false"
+  embedded color-space="sRGB" vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false"
   mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1;"
   renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true">
 
@@ -84,16 +57,12 @@
     <video id="vid" src="./video.mp4" loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
   </a-assets>
 
-  <!-- 錨點 -->
   <a-entity id="marker" mindar-image-target="targetIndex: 0"></a-entity>
 
-  <!-- 鎖定後的牆面影片 -->
   <a-entity id="wallPlane" visible="false">
-    <a-video id="wallVideo" src="#vid" width="15.14" height="3.283"
-             material="shader: flat; side: double;" position="0 0 0"></a-video>
+    <a-video id="wallVideo" src="#vid" width="15.14" height="3.283" material="shader: flat; side: double;" position="0 0 0"></a-video>
   </a-entity>
 
-  <!-- 後鏡頭 -->
   <a-entity camera="facingMode: environment"></a-entity>
 </a-scene>
 
@@ -106,174 +75,100 @@ const ctrl = document.getElementById('ctrl');
 const scene = document.querySelector('a-scene');
 const marker = document.getElementById('marker');
 const wall   = document.getElementById('wallPlane');
-const video  = document.getElementById('vid');
+const videoEl= document.getElementById('vid');
 let locked = false;
 
-/* 牆面幾何（公尺） */
-const WALL_W = 15.14, WALL_H = 3.283;
-const ANCHOR_X = 1.73,  ANCHOR_Y = 0.46;
+/* 幾何 */
+const WALL_W=15.14, WALL_H=3.283, ANCHOR_X=1.73, ANCHOR_Y=0.46;
 
-/* 微調設定 */
-const LS_KEY = 'WALL_AR_LOCK_V2';
-let adj = JSON.parse(localStorage.getItem(LS_KEY) || '{"ox":0,"oy":0,"rz":0,"s":1}');
-let step = 0.02, rotStep = 0.8;
-let basePose = null;
+/* 微調 */
+const LS_KEY='WALL_AR_LOCK_V2';
+let adj=JSON.parse(localStorage.getItem(LS_KEY)||'{"ox":0,"oy":0,"rz":0,"s":1}');
+let step=0.02, rotStep=0.8, basePose=null;
 
-/* ====== Pose helpers ====== */
 function applyResetPose(){
   if(!basePose) return;
   wall.object3D.position.copy(basePose.pos);
   wall.object3D.quaternion.copy(basePose.quat);
   wall.object3D.scale.copy(basePose.scl);
-  const q = wall.object3D.quaternion;
-  const right = new THREE.Vector3(1,0,0).applyQuaternion(q);
-  const up    = new THREE.Vector3(0,1,0).applyQuaternion(q);
-  wall.object3D.position.addScaledVector(right, adj.ox);
-  wall.object3D.position.addScaledVector(up,    adj.oy);
+  const q=wall.object3D.quaternion;
+  const right=new THREE.Vector3(1,0,0).applyQuaternion(q);
+  const up   =new THREE.Vector3(0,1,0).applyQuaternion(q);
+  wall.object3D.position.addScaledVector(right,adj.ox);
+  wall.object3D.position.addScaledVector(up,adj.oy);
   wall.object3D.rotateZ(THREE.MathUtils.degToRad(adj.rz));
   wall.object3D.scale.multiplyScalar(adj.s);
 }
-function nudge(dx,dy){ adj.ox += dx; adj.oy += dy; applyResetPose(); }
-function rot(d){ adj.rz += d; applyResetPose(); }
-function scaleMul(m){ adj.s *= m; applyResetPose(); }
-function setFine(){ step=0.02; rotStep=0.8; log('精度=細'); }
-function setCoarse(){ step=0.10; rotStep=3; log('精度=粗'); }
-function saveCfg(){ localStorage.setItem(LS_KEY, JSON.stringify(adj)); log('已儲存設定：'+JSON.stringify(adj)); }
-function resetAdj(){ adj={ox:0,oy:0,rz:0,s:1}; applyResetPose(); log('已重置微調'); }
-function reload(){ location.reload(); }
+function nudge(dx,dy){adj.ox+=dx;adj.oy+=dy;applyResetPose();}
+function rot(d){adj.rz+=d;applyResetPose();}
+function scaleMul(m){adj.s*=m;applyResetPose();}
+function setFine(){step=0.02;rotStep=0.8;log('精度=細');}
+function setCoarse(){step=0.10;rotStep=3;log('精度=粗');}
+function saveCfg(){localStorage.setItem(LS_KEY,JSON.stringify(adj));log('已儲存設定：'+JSON.stringify(adj));}
+function resetAdj(){adj={ox:0,oy:0,rz:0,s:1};applyResetPose();log('已重置微調');}
+function reload(){location.reload();}
 
-/* ====== Boot helpers ====== */
-async function waitSceneLoaded(el){
-  if (el.hasLoaded) return;
-  await new Promise(res => el.addEventListener('loaded', res, {once:true}));
-}
-async function ensureCameraPermission(){
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('此瀏覽器不支援 getUserMedia 或未允許相機');
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: "environment" } }, audio: false
-  });
-  stream.getTracks().forEach(t => t.stop());
+async function waitSceneLoaded(el){ if(el.hasLoaded) return; await new Promise(r=>el.addEventListener('loaded',r,{once:true})); }
+async function ensureCam(){
+  if(!navigator.mediaDevices?.getUserMedia) throw new Error('此瀏覽器不支援 getUserMedia');
+  const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+  s.getTracks().forEach(t=>t.stop());
 }
 
-/* ====== 找出 MindAR 插入的 <video>/<canvas>（不靠固定 id） ====== */
-async function waitForCameraNodesFlexible(timeoutMs = 10000){
-  const t0 = performance.now();
-  return await new Promise((resolve, reject)=>{
-    const tick = ()=>{
-      // 候選 video：具有 srcObject（MediaStream）的，且不是我們的 #vid
-      const videos = Array.from(document.querySelectorAll('video'));
-      const camVideos = videos.filter(v => v !== video && 'srcObject' in v && v.srcObject);
-      // 候選 canvas：不是 A-Frame 的 .a-canvas，且面積 > 0，且靠近相機 video
-      const canvases = Array.from(document.querySelectorAll('canvas'));
-      const nonAFrameCanvases = canvases.filter(c => !c.classList.contains('a-canvas') && c.width*c.height >= 1);
-
-      // 嘗試就近配對：找與相機 video 同父層或相鄰的 canvas
-      let pickV = camVideos[0] || null;
-      let pickC = null;
-      if (pickV){
-        const siblings = new Set(pickV.parentElement ? Array.from(pickV.parentElement.querySelectorAll('canvas')) : []);
-        pickC = Array.from(siblings).find(c => !c.classList.contains('a-canvas')) || nonAFrameCanvases[0] || null;
-      }
-
-      if (pickV && pickC){
-        return resolve({v: pickV, c: pickC, allVideos: videos.length, camVideos: camVideos.length, allCanvases: canvases.length});
-      }
-      if (performance.now() - t0 > timeoutMs) {
-        return reject(new Error(`camera nodes not found (videos=${videos.length}, camVideos=${camVideos.length}, canvases=${canvases.length})`));
-      }
-      requestAnimationFrame(tick);
-    };
-    tick();
-  });
+/* —— 關鍵：把「所有 srcObject 的 video」與「所有非 .a-canvas 的 canvas」都套 cam-fit —— */
+function styleCameraLayers(){
+  const videos=[...document.querySelectorAll('video')].filter(v=>v!==videoEl && v.srcObject);
+  const canvases=[...document.querySelectorAll('canvas')].filter(c=>!c.classList.contains('a-canvas'));
+  videos.forEach(v=>v.classList.add('cam-fit'));
+  canvases.forEach(c=>c.classList.add('cam-fit'));
+  if(videos.length) log(`📷 相機 video 數：${videos.length}（已套 cam-fit）`);
+  if(canvases.length) log(`🖼️ 處理 canvas 數：${canvases.length}（已套 cam-fit）`);
 }
 
-/* ====== Start AR ====== */
+/* 監看 DOM，MindAR 插入節點就立即套樣式 */
+const mo = new MutationObserver(()=>styleCameraLayers());
+
 btnStart.onclick = async ()=>{
   try{
-    statusEl.textContent = '請授權相機…';
-    await ensureCameraPermission();
-    statusEl.textContent = '啟動中…';
+    statusEl.textContent='請授權相機…';
+    await ensureCam();
+    statusEl.textContent='啟動中…';
     await waitSceneLoaded(scene);
 
-    const arSystem =
-      scene.systems['mindar-image-system'] ||
-      scene.systems['mindar-image'] ||
-      (scene.components['mindar-image']?.system);
+    const arSystem = scene.systems['mindar-image-system'] || scene.systems['mindar-image'] || (scene.components['mindar-image']?.system);
+    if(!arSystem?.start){ statusEl.textContent='啟動失敗（MindAR 未初始化）'; log('🟥 MindAR system not ready'); return; }
 
-    if (!arSystem || !arSystem.start) {
-      statusEl.textContent = '啟動失敗（MindAR 未初始化）';
-      log('🟥 MindAR system not ready');
-      return;
-    }
-
+    // 開始監看（整個 body）
+    mo.observe(document.body,{childList:true,subtree:true});
     await arSystem.start();
-    statusEl.textContent = '請對準錨點';
+
+    statusEl.textContent='請對準錨點';
     log('✅ AR 已啟動，等待 targetFound…');
-
-    /* === 關鍵：不依賴固定 id，彈性尋找相機節點 === */
-    try{
-      const {v, c, allVideos, camVideos, allCanvases} = await waitForCameraNodesFlexible();
-      log(`📷 找到相機節點（videos:${allVideos} camVideos:${camVideos} canvases:${allCanvases}）`);
-      [v, c].forEach(el=> el.classList.add('cam-fit'));
-
-      // 設置事件以便觀測相機狀態
-      v.addEventListener('loadedmetadata', ()=>{
-        log(`📷 相機啟動：${v.videoWidth}x${v.videoHeight}`);
-      });
-      const timer = setInterval(()=>{
-        log(`📷 readyState=${v.readyState} paused=${v.paused}`);
-        if(v.readyState>=2) clearInterval(timer);
-      },1000);
-
-      // 視窗改變時維持滿版
-      window.addEventListener('resize', ()=>{
-        [v, c].forEach(el=>{
-          el.style.width='100vw';
-          el.style.height='100vh';
-        });
-      });
-    }catch(e){
-      statusEl.textContent = '啟動中（未找到相機節點）';
-      log('🟥 相機節點逾時：'+e.message);
-      log('🟨 提示：若使用內建瀏覽器（LINE/IG/FB）請改用 Chrome；或確認此站點的相機權限為「允許」。');
-    }
-
+    styleCameraLayers(); // 先嘗試一次
   }catch(e){
-    statusEl.textContent = '啟動失敗';
+    statusEl.textContent='啟動失敗';
     log('🟥 啟動失敗：'+e.name+' / '+e.message);
   }
 };
 
-/* ====== Anchor lock ====== */
+/* targetFound → 鎖定牆面 */
 scene.addEventListener('targetFound', ()=>{
   if(locked) return;
   log('🎯 找到錨點 → 鎖定位姿');
-  video.play().catch(()=>{});
-  const m = marker.object3D.matrixWorld.clone();
+  videoEl.play().catch(()=>{});
+  const m=marker.object3D.matrixWorld.clone();
   wall.object3D.matrix.copy(m);
-  wall.object3D.matrix.decompose(wall.object3D.position, wall.object3D.quaternion, wall.object3D.scale);
+  wall.object3D.matrix.decompose(wall.object3D.position,wall.object3D.quaternion,wall.object3D.scale);
   wall.object3D.scale.set(1,1,1);
-
-  const dx = (WALL_W/2 - ANCHOR_X);
-  const dy = (ANCHOR_Y - WALL_H/2);
-  const q = wall.object3D.quaternion;
-  const right = new THREE.Vector3(1,0,0).applyQuaternion(q);
-  const up    = new THREE.Vector3(0,1,0).applyQuaternion(q);
-  wall.object3D.position.addScaledVector(right, dx);
-  wall.object3D.position.addScaledVector(up,    dy);
-
+  const q=wall.object3D.quaternion;
+  const right=new THREE.Vector3(1,0,0).applyQuaternion(q);
+  const up   =new THREE.Vector3(0,1,0).applyQuaternion(q);
+  wall.object3D.position.addScaledVector(right,(WALL_W/2-ANCHOR_X));
+  wall.object3D.position.addScaledVector(up,(ANCHOR_Y-WALL_H/2));
   wall.setAttribute('visible','true');
-  locked = true;
-  statusEl.textContent = '已鎖定，可校正並儲存';
-  basePose = {
-    pos:  wall.object3D.position.clone(),
-    quat: wall.object3D.quaternion.clone(),
-    scl:  wall.object3D.scale.clone()
-  };
-  applyResetPose();
-  ctrl.style.display = 'block';
+  locked=true; statusEl.textContent='已鎖定，可校正並儲存';
+  basePose={pos:wall.object3D.position.clone(),quat:wall.object3D.quaternion.clone(),scl:wall.object3D.scale.clone()};
+  applyResetPose(); ctrl.style.display='block';
 });
 
 scene.addEventListener('loaded', ()=>{
