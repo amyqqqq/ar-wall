@@ -3,47 +3,38 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>大牆 AR｜單錨鎖定＋校正（滿版修正版）</title>
+<title>大牆 AR｜單錨鎖定＋校正（鏡頭可見版）</title>
 
-<!-- A-Frame 與 MindAR（順序很重要） -->
+<!-- A-Frame -> MindAR（順序很重要） -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
 <style>
-  html,body{
-    margin:0; height:100%;
-    background:#000; color:#0f0; font-family:monospace;
-    overflow:hidden;
-  }
+  html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
 
-  /* ====== 鏡頭滿版置中 ====== */
-  a-scene{
-    position:fixed !important; inset:0 !important;
-    width:100vw !important; height:100vh !important;
-  }
+  /* 鏡頭滿版與層級 */
+  a-scene{position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:1 !important}
   #mindar-image-video,
   #mindar-image-canvas{
     position:fixed !important; inset:0 !important;
     width:100vw !important; height:100vh !important;
     object-fit:cover !important; transform:none !important;
+    z-index:0 !important; opacity:1 !important; display:block !important;
   }
   canvas.a-canvas{
     width:100vw !important; height:100vh !important;
-    background:transparent !important; /* 讓 3D 畫布透明 */
+    background:transparent !important; z-index:1 !important;
+    pointer-events:none !important; /* 不擋點擊 */
   }
 
-  /* 可選：隱藏 MindAR 內建載入圈圈 */
-  .mindar-ui-loading{ display:none !important; }
+  /* 隱藏 MindAR 內建遮罩/圈圈（避免擋鏡頭） */
+  .mindar-ui-loading, .mindar-ui-scanning{ display:none !important; }
 
-  #top{position:fixed;left:8px;top:8px;z-index:20}
-  #log{
-    position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;
-    background:rgba(0,0,0,.55);padding:8px;z-index:20;font-size:12px;line-height:1.25
-  }
-  #ctrl{
-    position:fixed;left:8px;bottom:160px;z-index:20;background:rgba(0,0,0,.5);
-    border-radius:10px;padding:8px;display:none
-  }
+  #top{position:fixed;left:8px;top:8px;z-index:10}
+  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;
+       background:rgba(0,0,0,.55);padding:8px;z-index:10;font-size:12px;line-height:1.25}
+  #ctrl{position:fixed;left:8px;bottom:160px;z-index:10;background:rgba(0,0,0,.5);
+        border-radius:10px;padding:8px;display:none}
   #ctrl button{margin:2px 3px;padding:8px 12px}
   .row{margin:4px 0}
 </style>
@@ -118,11 +109,9 @@ const wall   = document.getElementById('wallPlane');
 const video  = document.getElementById('vid');
 let locked = false;
 
-/* 牆面幾何（單位：公尺） */
-const WALL_W = 15.14;
-const WALL_H = 3.283;
-const ANCHOR_X = 1.73;
-const ANCHOR_Y = 0.46;
+/* 牆面幾何（公尺） */
+const WALL_W = 15.14, WALL_H = 3.283;
+const ANCHOR_X = 1.73,  ANCHOR_Y = 0.46;
 
 /* 微調設定 */
 const LS_KEY = 'WALL_AR_LOCK_V2';
@@ -130,6 +119,7 @@ let adj = JSON.parse(localStorage.getItem(LS_KEY) || '{"ox":0,"oy":0,"rz":0,"s":
 let step = 0.02, rotStep = 0.8;
 let basePose = null;
 
+/* ====== Pose helpers ====== */
 function applyResetPose(){
   if(!basePose) return;
   wall.object3D.position.copy(basePose.pos);
@@ -143,7 +133,6 @@ function applyResetPose(){
   wall.object3D.rotateZ(THREE.MathUtils.degToRad(adj.rz));
   wall.object3D.scale.multiplyScalar(adj.s);
 }
-
 function nudge(dx,dy){ adj.ox += dx; adj.oy += dy; applyResetPose(); }
 function rot(d){ adj.rz += d; applyResetPose(); }
 function scaleMul(m){ adj.s *= m; applyResetPose(); }
@@ -153,11 +142,11 @@ function saveCfg(){ localStorage.setItem(LS_KEY, JSON.stringify(adj)); log('已�
 function resetAdj(){ adj={ox:0,oy:0,rz:0,s:1}; applyResetPose(); log('已重置微調'); }
 function reload(){ location.reload(); }
 
+/* ====== Boot helpers ====== */
 async function waitSceneLoaded(el){
   if (el.hasLoaded) return;
   await new Promise(res => el.addEventListener('loaded', res, {once:true}));
 }
-
 async function ensureCameraPermission(){
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error('此瀏覽器不支援 getUserMedia');
@@ -168,7 +157,7 @@ async function ensureCameraPermission(){
   stream.getTracks().forEach(t => t.stop());
 }
 
-/* 啟動按鈕 */
+/* ====== Start AR ====== */
 btnStart.onclick = async ()=>{
   try{
     statusEl.textContent = '請授權相機…';
@@ -191,22 +180,36 @@ btnStart.onclick = async ()=>{
     statusEl.textContent = '請對準錨點';
     log('✅ AR 已啟動，等待 targetFound…');
 
-    /* 修正相機畫面滿版 */
+    /* 鏡頭元素偵錯＋滿版修正 */
     const fixCamFit = () => {
       const v = document.querySelector('#mindar-image-video');
       const c = document.querySelector('#mindar-image-canvas');
-      [v, c].forEach(el => {
-        if (!el) return;
-        el.style.position = 'fixed';
-        el.style.inset = '0';
-        el.style.width = '100vw';
-        el.style.height = '100vh';
-        el.style.objectFit = 'cover';
-        el.style.transform = 'none';
+      [v,c].forEach(el=>{
+        if(!el) return;
+        el.style.position='fixed';
+        el.style.inset='0';
+        el.style.width='100vw';
+        el.style.height='100vh';
+        el.style.objectFit='cover';
+        el.style.transform='none';
+        el.style.zIndex=0;
+        el.style.opacity=1;
+        el.style.display='block';
       });
     };
-    fixCamFit();
-    window.addEventListener('resize', fixCamFit);
+    fixCamFit(); window.addEventListener('resize', fixCamFit);
+
+    const v = document.querySelector('#mindar-image-video');
+    if(!v){ log('🟥 找不到 #mindar-image-video'); }
+    else{
+      v.addEventListener('loadedmetadata', ()=>{
+        log(`📷 相機啟動：${v.videoWidth}x${v.videoHeight}`);
+      });
+      const timer = setInterval(()=>{
+        log(`📷 readyState=${v.readyState} paused=${v.paused}`);
+        if(v.readyState>=2) clearInterval(timer);
+      },1000);
+    }
 
   }catch(e){
     statusEl.textContent = '啟動失敗';
@@ -214,7 +217,7 @@ btnStart.onclick = async ()=>{
   }
 };
 
-/* 錨點觸發 */
+/* ====== Anchor lock ====== */
 scene.addEventListener('targetFound', ()=>{
   if(locked) return;
   log('🎯 找到錨點 → 鎖定位姿');
@@ -223,6 +226,7 @@ scene.addEventListener('targetFound', ()=>{
   wall.object3D.matrix.copy(m);
   wall.object3D.matrix.decompose(wall.object3D.position, wall.object3D.quaternion, wall.object3D.scale);
   wall.object3D.scale.set(1,1,1);
+
   const dx = (WALL_W/2 - ANCHOR_X);
   const dy = (ANCHOR_Y - WALL_H/2);
   const q = wall.object3D.quaternion;
@@ -230,6 +234,7 @@ scene.addEventListener('targetFound', ()=>{
   const up    = new THREE.Vector3(0,1,0).applyQuaternion(q);
   wall.object3D.position.addScaledVector(right, dx);
   wall.object3D.position.addScaledVector(up,    dy);
+
   wall.setAttribute('visible','true');
   locked = true;
   statusEl.textContent = '已鎖定，可校正並儲存';
