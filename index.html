@@ -9,29 +9,82 @@
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
 <style>
-  html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
-  a-scene{position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:1}
-  /* A-Frame 畫布透明，避免黑底 */
-  canvas.a-canvas{width:100vw !important;height:100vh !important;background:transparent !important;pointer-events:none !important;z-index:1}
-  /* 直接掛在 DOM 的相機 video 專用樣式 */
+  html,body{
+    margin:0;
+    height:100%;
+    background:#000;
+    color:#0f0;
+    font-family:monospace;
+    overflow:hidden;
+  }
+  a-scene{
+    position:fixed !important;
+    inset:0 !important;
+    width:100vw !important;
+    height:100vh !important;
+    z-index:1;
+  }
+  canvas.a-canvas{
+    width:100vw !important;
+    height:100vh !important;
+    background:transparent !important;
+    pointer-events:none !important;
+    z-index:1;
+  }
   #bgCam{
-    position:fixed; left:0; top:0; width:100vw; height:100vh;
-    object-fit:cover; z-index:0; display:block; opacity:1;
+    position:fixed;
+    left:0; top:0;
+    width:100vw; height:100vh;
+    object-fit:cover;
+    z-index:0;
+    display:block;
+    opacity:1;
     transform:none !important;
   }
-  /* 關掉 MindAR 內建遮罩/圈圈 */
-  .mindar-ui-loading,.mindar-ui-scanning{display:none !important}
+  .mindar-ui-loading,.mindar-ui-scanning{display:none !important;}
 
-  #top{position:fixed;left:8px;top:8px;z-index:10}
-  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:10;font-size:12px;line-height:1.25}
-  #ctrl{position:fixed;left:8px;bottom:160px;z-index:10;background:rgba(0,0,0,.5);border-radius:10px;padding:8px;display:none}
-  #ctrl button{margin:2px 3px;padding:8px 12px}
-  .row{margin:4px 0}
+  #top{position:fixed;left:8px;top:8px;z-index:10;}
+  #log{
+    position:fixed;left:8px;bottom:8px;right:8px;
+    height:140px;overflow:auto;
+    background:rgba(0,0,0,.55);
+    padding:8px;z-index:10;font-size:12px;line-height:1.25;
+  }
+  #ctrl{
+    position:fixed;left:8px;bottom:160px;z-index:10;
+    background:rgba(0,0,0,.5);border-radius:10px;
+    padding:8px;display:none;
+  }
+  #ctrl button{margin:2px 3px;padding:8px 12px;}
+  .row{margin:4px 0;}
+
+  /* 半透明錨點圖 */
+  #anchorGhost{
+    position:fixed; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    max-width:min(80vw,80vh); height:auto;
+    opacity:0.35; z-index:9; pointer-events:none; display:none;
+    filter:drop-shadow(0 0 4px rgba(0,0,0,.4));
+    transition:opacity .25s ease;
+  }
+
+  /* 錄影紅點提示 */
+  #recDot{
+    position:fixed; right:12px; top:12px;
+    width:12px; height:12px;
+    background:#f33;
+    border-radius:50%;
+    box-shadow:0 0 10px rgba(255,51,51,0.67);
+    z-index:12;
+    display:none;
+  }
 </style>
 </head>
 <body>
-<!-- 我們自己放一支 <video> 當背景，之後把 arSystem.video 指過來 -->
 <video id="bgCam" autoplay muted playsinline webkit-playsinline></video>
+
+<img id="anchorGhost" src="./anchor.png" alt="錨點對齊預覽"/>
+<div id="recDot"></div>
 
 <div id="top">
   <button id="btnStart">啟動 AR</button>
@@ -49,57 +102,66 @@
     精度：<button onclick="setFine()">細</button><button onclick="setCoarse()">粗</button>
     <button onclick="resetAdj()">重置微調</button><button onclick="saveCfg()">💾 儲存</button><button onclick="reload()">重新載入</button>
   </div>
+  <div class="row">
+    錨點圖：<button onclick="toggleGhost()">顯/隱</button>
+    透明度 <input id="ghostAlpha" type="range" min="0" max="1" step="0.01" value="0.35" oninput="setGhostAlpha(this.value)" style="vertical-align:middle;width:120px">
+  </div>
+  <div class="row">
+    影像：<button onclick="snap()">📸 拍照</button>
+    <button id="btnRec" onclick="toggleRec()">⏺ 開始錄影</button>
+  </div>
 </div>
 
 <div id="log"></div>
 
 <a-scene
-  embedded color-space="sRGB" vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false"
+  embedded color-space="sRGB"
+  vr-mode-ui="enabled:false"
+  device-orientation-permission-ui="enabled:false"
   mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1;"
-  renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true">
+  renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
   <a-assets>
     <video id="vid" src="./video.mp4" loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
   </a-assets>
 
-  <a-entity id="marker" mindar-image-target="targetIndex: 0"></a-entity>
-
+  <a-entity id="marker" mindar-image-target="targetIndex:0"></a-entity>
   <a-entity id="wallPlane" visible="false">
-    <a-video id="wallVideo" src="#vid" width="15.14" height="3.283" material="shader: flat; side: double;" position="0 0 0"></a-video>
+    <a-video id="wallVideo" src="#vid" width="15.14" height="3.283"
+      material="shader:flat; side:double;" position="0 0 0"></a-video>
   </a-entity>
 
   <a-entity camera="facingMode: environment"></a-entity>
 </a-scene>
 
 <script>
-const logEl = document.getElementById('log');
-const log = s=>{console.log(s); logEl.textContent += s+"\n"; logEl.scrollTop=logEl.scrollHeight;}
-const statusEl = document.getElementById('status');
-const btnStart = document.getElementById('btnStart');
-const ctrl = document.getElementById('ctrl');
-const scene = document.querySelector('a-scene');
-const marker = document.getElementById('marker');
-const wall   = document.getElementById('wallPlane');
-const videoOverlay = document.getElementById('vid');
-const bgCam = document.getElementById('bgCam');
-let locked = false;
+const logEl=document.getElementById('log');
+const log=s=>{console.log(s);logEl.textContent+=s+"\n";logEl.scrollTop=logEl.scrollHeight;}
+const statusEl=document.getElementById('status');
+const btnStart=document.getElementById('btnStart');
+const ctrl=document.getElementById('ctrl');
+const scene=document.querySelector('a-scene');
+const marker=document.getElementById('marker');
+const wall=document.getElementById('wallPlane');
+const videoOverlay=document.getElementById('vid');
+const bgCam=document.getElementById('bgCam');
+const ghost=document.getElementById('anchorGhost');
+const recDot=document.getElementById('recDot');
+let locked=false;
 
-/* 幾何 */
-const WALL_W=15.14, WALL_H=3.283, ANCHOR_X=1.73, ANCHOR_Y=0.46;
-
-/* 微調 */
+const WALL_W=15.14,WALL_H=3.283,ANCHOR_X=1.73,ANCHOR_Y=0.46;
 const LS_KEY='WALL_AR_LOCK_V2';
 let adj=JSON.parse(localStorage.getItem(LS_KEY)||'{"ox":0,"oy":0,"rz":0,"s":1}');
-let step=0.02, rotStep=0.8, basePose=null;
+let step=0.02,rotStep=0.8,basePose=null;
 
 function applyResetPose(){
-  if(!basePose) return;
+  if(!basePose)return;
   wall.object3D.position.copy(basePose.pos);
   wall.object3D.quaternion.copy(basePose.quat);
   wall.object3D.scale.copy(basePose.scl);
   const q=wall.object3D.quaternion;
   const right=new THREE.Vector3(1,0,0).applyQuaternion(q);
-  const up   =new THREE.Vector3(0,1,0).applyQuaternion(q);
+  const up=new THREE.Vector3(0,1,0).applyQuaternion(q);
   wall.object3D.position.addScaledVector(right,adj.ox);
   wall.object3D.position.addScaledVector(up,adj.oy);
   wall.object3D.rotateZ(THREE.MathUtils.degToRad(adj.rz));
@@ -113,104 +175,164 @@ function setCoarse(){step=0.10;rotStep=3;log('精度=粗');}
 function saveCfg(){localStorage.setItem(LS_KEY,JSON.stringify(adj));log('已儲存設定：'+JSON.stringify(adj));}
 function resetAdj(){adj={ox:0,oy:0,rz:0,s:1};applyResetPose();log('已重置微調');}
 function reload(){location.reload();}
-
-async function waitSceneLoaded(el){ if(el.hasLoaded) return; await new Promise(r=>el.addEventListener('loaded',r,{once:true})); }
+async function waitSceneLoaded(el){if(el.hasLoaded)return;await new Promise(r=>el.addEventListener('loaded',r,{once:true}));}
 async function ensureCam(){
-  if(!navigator.mediaDevices?.getUserMedia) throw new Error('此瀏覽器不支援 getUserMedia');
+  if(!navigator.mediaDevices?.getUserMedia)throw new Error('此瀏覽器不支援 getUserMedia');
   const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
   s.getTracks().forEach(t=>t.stop());
 }
 
-/* 啟動流程 */
-btnStart.onclick = async ()=>{
+/* 啟動 */
+btnStart.onclick=async()=>{
   try{
     statusEl.textContent='請授權相機…';
     await ensureCam();
     statusEl.textContent='啟動中…';
     await waitSceneLoaded(scene);
 
-    const arSystem = scene.systems['mindar-image-system'] || scene.systems['mindar-image'] || (scene.components['mindar-image']?.system);
-    if(!arSystem?.start){ statusEl.textContent='啟動失敗（MindAR 未初始化）'; log('🟥 MindAR system not ready'); return; }
+    const arSystem=scene.systems['mindar-image-system']||scene.systems['mindar-image']||(scene.components['mindar-image']?.system);
+    if(!arSystem?.start){statusEl.textContent='啟動失敗（MindAR 未初始化）';log('🟥 MindAR system not ready');return;}
 
     await arSystem.start();
     statusEl.textContent='請對準錨點';
     log('✅ AR 已啟動，等待 targetFound…');
 
-    /* === 直接把 MindAR 的 video 掛到我們的 <video id="bgCam"> 上 === */
-    if (arSystem.video){
-      // 有些瀏覽器不能把同一個 MediaStream 同時用兩個 <video>，我們把 DOM 裡的 arSystem.video 移到外層並改 id
+    if(arSystem.video){
       try{
         arSystem.video.setAttribute('id','bgCam');
         arSystem.video.setAttribute('playsinline','');
         arSystem.video.setAttribute('webkit-playsinline','');
-        arSystem.video.muted = true;
-        document.body.prepend(arSystem.video);  // 放到最底層
+        arSystem.video.muted=true;
+        document.body.prepend(arSystem.video);
       }catch(_){}
-      // 保險：若無法移動，就把 stream 指給我們的 bgCam
-      if (arSystem.video.srcObject && bgCam !== arSystem.video){
-        try{ bgCam.srcObject = arSystem.video.srcObject; }catch(_){}
+      if(arSystem.video.srcObject&&bgCam!==arSystem.video){
+        try{bgCam.srcObject=arSystem.video.srcObject;}catch(_){}
       }
     }
-
-    // 無論是哪個 video，套滿版樣式
-    const camV = document.getElementById('bgCam');
-    if (camV){
-      camV.style.position='fixed'; camV.style.left='0'; camV.style.top='0';
-      camV.style.width='100vw'; camV.style.height='100vh';
-      camV.style.objectFit='cover'; camV.style.zIndex='0'; camV.style.transform='none';
-      camV.addEventListener('loadedmetadata',()=>{ log(`📷 相機啟動：${camV.videoWidth}x${camV.videoHeight}`); });
-    } else{
-      log('🟥 取得 arSystem.video 失敗');
-    }
-
+    const camV=document.getElementById('bgCam');
+    if(camV){
+      camV.style.position='fixed';camV.style.left='0';camV.style.top='0';
+      camV.style.width='100vw';camV.style.height='100vh';
+      camV.style.objectFit='cover';camV.style.zIndex='0';camV.style.transform='none';
+      camV.addEventListener('loadedmetadata',()=>{log(`📷 相機啟動：${camV.videoWidth}x${camV.videoHeight}`);});
+    }else{log('🟥 取得 arSystem.video 失敗');}
+    ghost.style.display='block';
   }catch(e){
     statusEl.textContent='啟動失敗';
     log('🟥 啟動失敗：'+e.name+' / '+e.message);
   }
 };
 
-// ✅ 綁在錨點 entity
-marker.addEventListener('targetFound', ()=>{
+/* targetFound / Lost */
+marker.addEventListener('targetFound',()=>{
   log('🎯 找到錨點 → 鎖定位姿');
   videoOverlay.play().catch(()=>{});
-  const m = marker.object3D.matrixWorld.clone();
+  const m=marker.object3D.matrixWorld.clone();
   wall.object3D.matrix.copy(m);
-  wall.object3D.matrix.decompose(
-    wall.object3D.position, wall.object3D.quaternion, wall.object3D.scale
-  );
+  wall.object3D.matrix.decompose(wall.object3D.position,wall.object3D.quaternion,wall.object3D.scale);
   wall.object3D.scale.set(1,1,1);
-
-  // 依你牆面座標做平移
-  const q = wall.object3D.quaternion;
-  const right = new THREE.Vector3(1,0,0).applyQuaternion(q);
-  const up    = new THREE.Vector3(0,1,0).applyQuaternion(q);
-  const dx = (WALL_W/2 - ANCHOR_X);
-  const dy = (ANCHOR_Y - WALL_H/2);
-  wall.object3D.position.addScaledVector(right, dx);
-  wall.object3D.position.addScaledVector(up,    dy);
-
+  const q=wall.object3D.quaternion;
+  const right=new THREE.Vector3(1,0,0).applyQuaternion(q);
+  const up=new THREE.Vector3(0,1,0).applyQuaternion(q);
+  const dx=(WALL_W/2-ANCHOR_X);
+  const dy=(ANCHOR_Y-WALL_H/2);
+  wall.object3D.position.addScaledVector(right,dx);
+  wall.object3D.position.addScaledVector(up,dy);
   wall.setAttribute('visible','true');
-  locked = true;
-  statusEl.textContent = '已鎖定，可校正並儲存';
-  basePose = {
-    pos: wall.object3D.position.clone(),
-    quat: wall.object3D.quaternion.clone(),
-    scl: wall.object3D.scale.clone()
-  };
+  locked=true;
+  statusEl.textContent='已鎖定，可校正並儲存';
+  basePose={pos:wall.object3D.position.clone(),quat:wall.object3D.quaternion.clone(),scl:wall.object3D.scale.clone()};
   applyResetPose();
-  ctrl.style.display = 'block';
+  ctrl.style.display='block';
+  ghost.style.opacity=0;
+  setTimeout(()=>ghost.style.display='none',260);
 });
-
-// 建議加上 lost 便於除錯
-marker.addEventListener('targetLost', ()=>{
+marker.addEventListener('targetLost',()=>{
   log('🟡 targetLost');
+  ghost.style.display='block';
+  requestAnimationFrame(()=>ghost.style.opacity=getGhostAlpha());
 });
-
-
-scene.addEventListener('loaded', ()=>{
+scene.addEventListener('loaded',()=>{
   log('就緒：按「啟動 AR」→ 授權相機 → 對準錨點 → 自動鎖定 → 微調儲存。');
   setFine();
 });
+
+/* 錨點圖控制 */
+const alphaEl=document.getElementById('ghostAlpha');
+const getGhostAlpha=()=>alphaEl?parseFloat(alphaEl.value||'0.35'):0.35;
+function toggleGhost(){
+  const vis=ghost.style.display!=='none';
+  if(vis){ghost.style.display='none';}
+  else{ghost.style.display='block';ghost.style.opacity=getGhostAlpha();}
+}
+function setGhostAlpha(v){ghost.style.opacity=v;}
+ghost.style.display='block';ghost.style.opacity=getGhostAlpha();
+
+/* 拍照/錄影合成（不含錨點圖） */
+function drawCompositeTo(canvas){
+  const ctx=canvas.getContext('2d');
+  const w=window.innerWidth,h=window.innerHeight;
+  canvas.width=w;canvas.height=h;
+  if(bgCam&&bgCam.videoWidth&&bgCam.videoHeight){
+    const vw=bgCam.videoWidth,vh=bgCam.videoHeight;
+    const vr=vw/vh,cr=w/h;let dw,dh,dx,dy;
+    if(vr>cr){dh=h;dw=h*vr;dx=(w-dw)/2;dy=0;}
+    else{dw=w;dh=w/vr;dx=0;dy=(h-dh)/2;}
+    ctx.drawImage(bgCam,dx,dy,dw,dh);
+  }else{ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);}
+  const aCanvas=document.querySelector('canvas.a-canvas');
+  if(aCanvas)ctx.drawImage(aCanvas,0,0,w,h);
+}
+
+function downloadBlob(blob,filename){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function snap(){
+  const cvs=document.createElement('canvas');
+  drawCompositeTo(cvs);
+  cvs.toBlob(b=>downloadBlob(b,`AR_Snap_${new Date().toISOString().replace(/[:.]/g,'-')}.png`),'image/png');
+}
+
+/* 錄影 */
+let rec={running:false,raf:0,canvas:null,ctx:null,stream:null,mr:null,chunks:[]};
+function startCompositeLoop(){
+  if(!rec.canvas){rec.canvas=document.createElement('canvas');rec.ctx=rec.canvas.getContext('2d');}
+  const loop=()=>{drawCompositeTo(rec.canvas);rec.raf=requestAnimationFrame(loop);};
+  loop();
+}
+function stopCompositeLoop(){cancelAnimationFrame(rec.raf);rec.raf=0;}
+async function startRec(){
+  startCompositeLoop();
+  rec.stream=rec.canvas.captureStream(30);
+  const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':
+              (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')?'video/webm;codecs=vp8':'video/webm');
+  rec.mr=new MediaRecorder(rec.stream,{mimeType:mime});
+  rec.chunks=[];
+  rec.mr.ondataavailable=e=>{if(e.data&&e.data.size)rec.chunks.push(e.data);};
+  rec.mr.onstop=()=>{
+    const blob=new Blob(rec.chunks,{type:rec.mr.mimeType});
+    downloadBlob(blob,`AR_Recording_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`);
+    rec.chunks=[];
+  };
+  rec.mr.start();
+  rec.running=true;
+  recDot.style.display='block';
+  document.getElementById('btnRec').textContent='⏹ 停止錄影';
+  log('🎬 開始錄影');
+}
+function stopRec(){
+  if(rec.mr&&rec.mr.state!=='inactive')rec.mr.stop();
+  stopCompositeLoop();
+  rec.running=false;
+  recDot.style.display='none';
+  document.getElementById('btnRec').textContent='⏺ 開始錄影';
+  log('🛑 錄影已停止');
+}
+function toggleRec(){if(rec.running)stopRec();else startRec();}
 </script>
 </body>
 </html>
