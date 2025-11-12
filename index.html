@@ -95,9 +95,7 @@ let locked=false;
 
 /* 影片格式選擇 */
 const candidates = [
-  {src: './video_h264_1080.mp4', type: 'video/mp4; codecs="avc1.640028"'},
-  {src: './video_vp9_1080.webm', type: 'video/webm; codecs="vp9"'},
-  {src: './video.mp4', type: 'video/mp4'}
+    {src: './video.mp4', type: 'video/mp4'}
 ];
 const pick = candidates.find(c => v.canPlayType(c.type));
 v.src = (pick ? pick.src : candidates[0].src);
