@@ -1,0 +1,5 @@
+<video id="v" src="./video.mp4" muted playsinline webkit-playsinline controls></video>
+<script>
+v.play().catch(e=>console.error('play error:', e));
+v.addEventListener('error', ()=>console.error('MEDIA_ERR:', v.error && v.error.code));
+</script>
