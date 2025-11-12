@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
 <title>大牆 AR｜行動診斷＋浮動鍵版</title>
 
 <!-- A-Frame + MindAR -->
@@ -10,24 +10,34 @@
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
 <style>
-  html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden;}
-  a-scene{position:fixed;inset:0;width:100vw;height:100vh;z-index:1;}
-  canvas.a-canvas{width:100vw;height:100vh;background:transparent;pointer-events:none;z-index:1;}
-  #bgCam{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;z-index:0;}
-  .mindar-ui-loading,.mindar-ui-scanning{display:none !important;}
-  #top{position:fixed;left:8px;top:8px;z-index:10;display:flex;gap:6px;align-items:center}
+  /* 基本與防溢出 */
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
+
+  /* A-Frame 及相機畫面：強制滿版置底 */
+  a-scene{
+    position:fixed !important; inset:0 !important;
+    width:100vw !important; height:100vh !important; overflow:hidden !important; z-index:1;
+  }
+  canvas.a-canvas,#bgCam{
+    position:fixed !important; inset:0 !important;
+    width:100vw !important; height:100vh !important; object-fit:cover !important;
+    max-width:100vw !important; max-height:100vh !important; z-index:1;
+  }
+
+  /* UI 都用 fixed，避免撐寬 */
+  #top{position:fixed;left:8px;top:8px;z-index:99999;display:flex;gap:6px;align-items:center}
   #top button{padding:8px 12px}
-  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:10;font-size:12px;line-height:1.25;}
-  #tfBadge{position:fixed;right:12px;top:40px;z-index:12;background:#f33;color:#fff;padding:6px 10px;border-radius:8px;display:none;font-weight:bold;}
-  /* 診斷面板與原生播放器 */
-  #diag{position:fixed;right:8px;bottom:72px;z-index:99999;background:#000a;color:#fff;padding:8px;border-radius:8px;max-width:70vw;font:12px monospace;display:none}
-  #nativeV{display:none;position:fixed;inset:0;z-index:100000;width:100vw;height:100vh;object-fit:contain;background:#000}
-  /* 永遠浮在最上層的診斷鍵 */
+  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:99999;font-size:12px;line-height:1.25;word-wrap:break-word;overflow-wrap:anywhere}
+  #tfBadge{position:fixed;right:12px;top:40px;z-index:99999;background:#f33;color:#fff;padding:6px 10px;border-radius:8px;display:none;font-weight:bold;}
+  #diag{position:fixed;right:8px;bottom:72px;z-index:100000;background:#000a;color:#fff;padding:8px;border-radius:8px;max-width:70vw;font:12px monospace;display:none}
+  #nativeV{display:none;position:fixed;inset:0;z-index:100001;width:100vw;height:100vh;object-fit:contain;background:#000}
   #btnDiagFab{
     position:fixed;right:12px;bottom:12px;width:56px;height:56px;border-radius:50%;
-    background:rgba(0,0,0,.8);color:#0f0;border:1px solid #0f0;
-    font-weight:700;z-index:100001;box-shadow:0 2px 10px #000a;
+    background:rgba(0,0,0,.8);color:#0f0;border:1px solid #0f0;font-weight:700;z-index:100002;box-shadow:0 2px 10px #000a;
   }
+
+  .mindar-ui-loading,.mindar-ui-scanning{display:none !important;}
 </style>
 </head>
 <body>
@@ -64,7 +74,8 @@
   renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
   <a-assets timeout="30000">
-    <video id="vid" preload="auto" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+    <!-- 直接用同層的 video.mp4 -->
+    <video id="vid" src="./video.mp4" preload="auto" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
 
   <a-entity id="marker" mindar-image-target="targetIndex:0">
@@ -93,15 +104,7 @@ const scene=document.querySelector('a-scene');
 const tfBadge=document.getElementById('tfBadge');
 let locked=false;
 
-/* 影片格式選擇 */
-const candidates = [
-    {src: './video.mp4', type: 'video/mp4'}
-];
-const pick = candidates.find(c => v.canPlayType(c.type));
-v.src = (pick ? pick.src : candidates[0].src);
-v.muted = true; v.playsInline = true;
-
-/* 貼圖刷新 */
+/* 影片材質即時刷新（防止首幀不貼） */
 AFRAME.registerComponent('video-texture-tick', {
   schema: { src: {type:'selector'} },
   init() {
@@ -129,7 +132,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   document.getElementById('testOnMarker')?.setAttribute('video-texture-tick','src:#vid');
 });
 
-/* 播放保底 */
+/* 播放保底鏈 */
 function forceVideoMaterialRefresh(){
   [wallVideo, document.getElementById('testOnMarker')].forEach(p=>{
     const m=p?.getObject3D('mesh');
@@ -148,7 +151,7 @@ function tryPlayVideoChain(){
   setTimeout(()=>{ if(v.readyState<2){ v.load(); go(); } forceVideoMaterialRefresh(); }, 400);
 }
 
-/* 啟動 */
+/* 啟動流程 */
 async function waitSceneLoaded(el){if(el.hasLoaded)return;await new Promise(r=>el.addEventListener('loaded',r,{once:true}));}
 async function ensureCam(){
   if(!navigator.mediaDevices?.getUserMedia)throw new Error('無法取用相機');
@@ -163,22 +166,30 @@ document.getElementById('btnStart').onclick=async()=>{
     await waitSceneLoaded(scene);
     const arSystem=scene.systems['mindar-image-system']||scene.systems['mindar-image'];
     await arSystem.start();
+
+    // 強制同步 renderer 尺寸（防偏移）
+    const r = scene.renderer; if(r&&r.setSize) r.setSize(window.innerWidth, window.innerHeight, true);
+    window.addEventListener('resize', ()=>{ const r2=scene.renderer; if(r2&&r2.setSize) r2.setSize(window.innerWidth, window.innerHeight, true); });
+
     statusEl.textContent='請對準錨點';
     log('✅ AR 已啟動');
+
+    // 將 MindAR 相機畫面鏡像到背景 video，方便觀察
     if(arSystem.video && arSystem.video.srcObject){
       bgCam.srcObject=arSystem.video.srcObject; bgCam.play().catch(()=>{});
     }
+
     v.load(); tryPlayVideoChain();
     setTimeout(()=>{ if(!locked){ wall.setAttribute('visible','true'); tryPlayVideoChain(); }},2000);
   }catch(e){ statusEl.textContent='啟動失敗'; log('🟥 '+e.message); }
 };
 
-/* 手勢保底 */
+/* 使用者手勢保底 */
 window.addEventListener('touchstart', ()=>{v.play().catch(()=>{});},{once:true,passive:true});
 window.addEventListener('pointerdown', ()=>{v.play().catch(()=>{});},{once:true});
 document.getElementById('btnForcePlay').onclick=()=>{v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));};
 
-/* target */
+/* target 事件 */
 marker.addEventListener('targetFound',()=>{
   log('🎯 targetFound'); tfBadge.style.display='block';
   tryPlayVideoChain();
@@ -204,7 +215,7 @@ function updateStat(){dstat.textContent=`readyState=${v.readyState} networkState
 dPlay.onclick=async()=>{nv.src=v.currentSrc||v.src;nv.muted=true;nv.style.display='block';dClose.style.display='inline-block';try{await nv.play();logD('✅ 原生播放成功');}catch(e){logD('❌ '+e.message);}updateStat();};
 dClose.onclick=()=>{nv.pause();nv.style.display='none';dClose.style.display='none';};
 
-/* 浮動鍵功能 */
+/* 浮動鍵開啟診斷面板 */
 document.getElementById('btnDiagFab').onclick=()=>{
   diag.style.display='block';
   diag.style.zIndex=100000;
@@ -213,17 +224,6 @@ document.getElementById('btnDiagFab').onclick=()=>{
   nv.style.display='block';
   nv.play().catch(()=>{});
 };
-
-/* Blob 載入（防跨域） */
-(async()=>{
-  const src=v.currentSrc||v.src;if(!src)return;
-  try{
-    const res=await fetch(src);if(!res.ok)throw new Error(res.status);
-    const blob=await res.blob();const url=URL.createObjectURL(blob);
-    v.src=url;nv.src=url;v.muted=true;nv.muted=true;await v.play().catch(()=>{});
-    log('✅ Blob 影片載入');
-  }catch(e){log('❌ Blob 失敗 '+e.message);}
-})();
 </script>
 </body>
 </html>
