@@ -142,8 +142,9 @@
 
   <a-entity id="marker" mindar-image-target="targetIndex:0"></a-entity>
   <a-entity id="wallPlane" visible="false">
-    <a-video id="wallVideo" src="#vid" width="15.14" height="3.283"
-      material="shader:flat; side:double;" position="0 0 0"></a-video>
+    <!-- 🔧 修正點：保留影片紋理並啟用雙面 -->
+    <a-video id="wallVideo" width="15.14" height="3.283" position="0 0 0"
+      material="shader:flat; src:#vid; side:double"></a-video>
   </a-entity>
 
   <a-entity camera="facingMode: environment"></a-entity>
