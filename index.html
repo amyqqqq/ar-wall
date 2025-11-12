@@ -3,29 +3,49 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<title>大牆 AR｜行動診斷＋浮動鍵版</title>
+<title>大牆 AR｜行動診斷＋浮動鍵版（修正版）</title>
 
 <!-- A-Frame + MindAR -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
+<!-- 行動 100vh 修正 -->
+<script>
+  const setVH = () => {
+    document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+  };
+  window.addEventListener('resize', setVH);
+  setVH();
+</script>
+
 <style>
-  /* 基本與防溢出 */
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
 
-  /* A-Frame 及相機畫面：強制滿版置底 */
+  /* A-Frame 畫布強制滿版且不被其他元素撐寬 */
   a-scene{
     position:fixed !important; inset:0 !important;
-    width:100vw !important; height:100vh !important; overflow:hidden !important; z-index:1;
+    width:100vw !important; height:calc(var(--vh, 1vh) * 100) !important;
+    overflow:hidden !important; z-index:1;
   }
-  canvas.a-canvas,#bgCam{
+  canvas.a-canvas{
     position:fixed !important; inset:0 !important;
-    width:100vw !important; height:100vh !important; object-fit:cover !important;
-    max-width:100vw !important; max-height:100vh !important; z-index:1;
+    width:100vw !important; height:calc(var(--vh, 1vh) * 100) !important;
+    object-fit:cover !important; max-width:100vw !important; max-height:100vh !important;
+    z-index:1;
   }
 
-  /* UI 都用 fixed，避免撐寬 */
+  /* 之前造成偏移的鏡像層：直接關掉 */
+  #bgCam{ display:none !important; }
+
+  /* 小預覽窗（可選，不影響版面） */
+  #bgPreview{
+    position:fixed; right:10px; bottom:80px; width:160px; height:90px;
+    object-fit:cover; border:1px solid #0f0; border-radius:8px;
+    z-index:99998; opacity:.8; background:#000;
+  }
+
+  /* 浮動 UI 一律 fixed，避免撐寬 */
   #top{position:fixed;left:8px;top:8px;z-index:99999;display:flex;gap:6px;align-items:center}
   #top button{padding:8px 12px}
   #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:99999;font-size:12px;line-height:1.25;word-wrap:break-word;overflow-wrap:anywhere}
@@ -36,12 +56,16 @@
     position:fixed;right:12px;bottom:12px;width:56px;height:56px;border-radius:50%;
     background:rgba(0,0,0,.8);color:#0f0;border:1px solid #0f0;font-weight:700;z-index:100002;box-shadow:0 2px 10px #000a;
   }
-
   .mindar-ui-loading,.mindar-ui-scanning{display:none !important;}
 </style>
 </head>
 <body>
+<!-- 以前的全螢幕鏡像層已停用 -->
 <video id="bgCam" autoplay muted playsinline webkit-playsinline></video>
+
+<!-- 小預覽窗（可留可不留） -->
+<video id="bgPreview" muted playsinline webkit-playsinline></video>
+
 <div id="tfBadge">🎯 targetFound</div>
 
 <div id="top">
@@ -96,15 +120,15 @@ const logEl=document.getElementById('log');
 const log=s=>{console.log(s);logEl.textContent+=s+"\n";logEl.scrollTop=logEl.scrollHeight;}
 const statusEl=document.getElementById('status');
 const v=document.getElementById('vid');
-const bgCam=document.getElementById('bgCam');
 const wall=document.getElementById('wallPlane');
 const wallVideo=document.getElementById('wallVideo');
 const marker=document.getElementById('marker');
 const scene=document.querySelector('a-scene');
 const tfBadge=document.getElementById('tfBadge');
+const bgPreview=document.getElementById('bgPreview');
 let locked=false;
 
-/* 影片材質即時刷新（防止首幀不貼） */
+/* 影片材質即時刷新（防首幀不貼） */
 AFRAME.registerComponent('video-texture-tick', {
   schema: { src: {type:'selector'} },
   init() {
@@ -151,13 +175,15 @@ function tryPlayVideoChain(){
   setTimeout(()=>{ if(v.readyState<2){ v.load(); go(); } forceVideoMaterialRefresh(); }, 400);
 }
 
-/* 啟動流程 */
+/* 工具 */
 async function waitSceneLoaded(el){if(el.hasLoaded)return;await new Promise(r=>el.addEventListener('loaded',r,{once:true}));}
 async function ensureCam(){
   if(!navigator.mediaDevices?.getUserMedia)throw new Error('無法取用相機');
   const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
   s.getTracks().forEach(t=>t.stop());
 }
+
+/* 啟動流程 */
 document.getElementById('btnStart').onclick=async()=>{
   try{
     statusEl.textContent='請授權相機…';
@@ -167,16 +193,23 @@ document.getElementById('btnStart').onclick=async()=>{
     const arSystem=scene.systems['mindar-image-system']||scene.systems['mindar-image'];
     await arSystem.start();
 
-    // 強制同步 renderer 尺寸（防偏移）
-    const r = scene.renderer; if(r&&r.setSize) r.setSize(window.innerWidth, window.innerHeight, true);
-    window.addEventListener('resize', ()=>{ const r2=scene.renderer; if(r2&&r2.setSize) r2.setSize(window.innerWidth, window.innerHeight, true); });
+    // 強制同步 renderer 尺寸（防偏移/變窄）
+    const syncSize = () => {
+      const r = scene.renderer;
+      if (r && r.setSize) r.setSize(window.innerWidth, window.innerHeight, true);
+      const c = scene.canvas;
+      if (c){ c.style.width='100vw'; c.style.height='calc(var(--vh) * 100)'; }
+    };
+    syncSize();
+    window.addEventListener('resize', syncSize);
 
     statusEl.textContent='請對準錨點';
     log('✅ AR 已啟動');
 
-    // 將 MindAR 相機畫面鏡像到背景 video，方便觀察
-    if(arSystem.video && arSystem.video.srcObject){
-      bgCam.srcObject=arSystem.video.srcObject; bgCam.play().catch(()=>{});
+    // 小預覽窗（不影響版面）
+    if (arSystem.video && arSystem.video.srcObject){
+      bgPreview.srcObject = arSystem.video.srcObject;
+      bgPreview.play().catch(()=>{});
     }
 
     v.load(); tryPlayVideoChain();
