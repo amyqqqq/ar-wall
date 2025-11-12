@@ -3,53 +3,20 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<title>大牆 AR｜行動診斷＋浮動鍵版（修正版）</title>
+<title>大牆 AR｜行動診斷＋浮動鍵版（極簡穩定版）</title>
 
-<!-- A-Frame + MindAR -->
+<!-- A-Frame + MindAR（順序） -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-
-<!-- 行動 100vh 修正 -->
-<script>
-  const setVH = () => {
-    document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
-  };
-  window.addEventListener('resize', setVH);
-  setVH();
-</script>
 
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden}
-
-  /* A-Frame 畫布強制滿版且不被其他元素撐寬 */
-  a-scene{
-    position:fixed !important; inset:0 !important;
-    width:100vw !important; height:calc(var(--vh, 1vh) * 100) !important;
-    overflow:hidden !important; z-index:1;
-  }
-  canvas.a-canvas{
-    position:fixed !important; inset:0 !important;
-    width:100vw !important; height:calc(var(--vh, 1vh) * 100) !important;
-    object-fit:cover !important; max-width:100vw !important; max-height:100vh !important;
-    z-index:1;
-  }
-
-  /* 之前造成偏移的鏡像層：直接關掉 */
-  #bgCam{ display:none !important; }
-
-  /* 小預覽窗（可選，不影響版面） */
-  #bgPreview{
-    position:fixed; right:10px; bottom:80px; width:160px; height:90px;
-    object-fit:cover; border:1px solid #0f0; border-radius:8px;
-    z-index:99998; opacity:.8; background:#000;
-  }
-
-  /* 浮動 UI 一律 fixed，避免撐寬 */
+  /* 只動 UI，不碰 A-Frame canvas，避免偏移 */
   #top{position:fixed;left:8px;top:8px;z-index:99999;display:flex;gap:6px;align-items:center}
   #top button{padding:8px 12px}
   #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:99999;font-size:12px;line-height:1.25;word-wrap:break-word;overflow-wrap:anywhere}
-  #tfBadge{position:fixed;right:12px;top:40px;z-index:99999;background:#f33;color:#fff;padding:6px 10px;border-radius:8px;display:none;font-weight:bold;}
+  #tfBadge{position:fixed;right:12px;top:40px;z-index:99999;background:#29b6f6;color:#000;padding:6px 10px;border-radius:8px;display:none;font-weight:bold;}
   #diag{position:fixed;right:8px;bottom:72px;z-index:100000;background:#000a;color:#fff;padding:8px;border-radius:8px;max-width:70vw;font:12px monospace;display:none}
   #nativeV{display:none;position:fixed;inset:0;z-index:100001;width:100vw;height:100vh;object-fit:contain;background:#000}
   #btnDiagFab{
@@ -60,17 +27,13 @@
 </style>
 </head>
 <body>
-<!-- 以前的全螢幕鏡像層已停用 -->
-<video id="bgCam" autoplay muted playsinline webkit-playsinline></video>
-
-<!-- 小預覽窗（可留可不留） -->
-<video id="bgPreview" muted playsinline webkit-playsinline></video>
 
 <div id="tfBadge">🎯 targetFound</div>
 
 <div id="top">
   <button id="btnStart">啟動 AR</button>
   <button id="btnForcePlay">▶ 手動播放</button>
+  <button id="btnShowWall" disabled>切到大牆</button>
   <span id="status">未啟動</span>
 </div>
 <div id="log"></div>
@@ -89,12 +52,12 @@
 <!-- 浮動診斷鍵 -->
 <button id="btnDiagFab">診</button>
 
-<!-- AR 場景 -->
+<!-- AR 場景（不要 embedded，也不要自訂 canvas 樣式） -->
 <a-scene
-  embedded color-space="sRGB"
+  color-space="sRGB"
   vr-mode-ui="enabled:false"
   device-orientation-permission-ui="enabled:false"
-  mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1;"
+  mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1"
   renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
   <a-assets timeout="30000">
@@ -102,11 +65,13 @@
     <video id="vid" src="./video.mp4" preload="auto" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
 
+  <!-- 先把影片貼在 marker 上的小測試平面，確認 targetFound 有反應 -->
   <a-entity id="marker" mindar-image-target="targetIndex:0">
     <a-plane id="testOnMarker" position="0 0 0.01" width="0.6" height="0.13"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01" visible="true"></a-plane>
+      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01" visible="false"></a-plane>
   </a-entity>
 
+  <!-- 之後要切成大牆時用（預設不顯示；切換時會把它掛到 marker 下面並調整尺寸） -->
   <a-entity id="wallPlane" visible="false">
     <a-plane id="wallVideo" width="15.14" height="3.283" position="0 0 0"
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"></a-plane>
@@ -125,114 +90,71 @@ const wallVideo=document.getElementById('wallVideo');
 const marker=document.getElementById('marker');
 const scene=document.querySelector('a-scene');
 const tfBadge=document.getElementById('tfBadge');
-const bgPreview=document.getElementById('bgPreview');
-let locked=false;
+const btnShowWall=document.getElementById('btnShowWall');
 
-/* 影片材質即時刷新（防首幀不貼） */
-AFRAME.registerComponent('video-texture-tick', {
-  schema: { src: {type:'selector'} },
-  init() {
-    this.video = this.data.src || v;
-    this.mesh = null;
-    this.el.addEventListener('model-loaded', () => this.bind());
-    this.bind();
-  },
-  bind() {
-    const m = this.el.getObject3D('mesh'); if(!m) return;
-    this.mesh = m;
-    const mat = m.material;
-    if (mat && mat.map) { mat.map.image = this.video; mat.map.needsUpdate = true; mat.needsUpdate = true; }
-  },
-  tick() {
-    if (!this.mesh || !this.video) return;
-    if (this.video.readyState >= 2) {
-      const mat = this.mesh.material;
-      if (mat && mat.map) mat.map.needsUpdate = true;
-    }
-  }
-});
-window.addEventListener('DOMContentLoaded', ()=>{
-  wallVideo?.setAttribute('video-texture-tick','src:#vid');
-  document.getElementById('testOnMarker')?.setAttribute('video-texture-tick','src:#vid');
-});
+let foundOnce=false;
 
-/* 播放保底鏈 */
-function forceVideoMaterialRefresh(){
-  [wallVideo, document.getElementById('testOnMarker')].forEach(p=>{
-    const m=p?.getObject3D('mesh');
-    if(m&&m.material){
-      if(m.material.map){ m.material.map.image=v; m.material.map.needsUpdate=true; }
-      m.material.needsUpdate=true;
-    }
-  });
-}
-function tryPlayVideoChain(){
-  const go=()=>v.play().catch(()=>{});
-  go();
-  v.addEventListener('loadeddata',()=>{go();forceVideoMaterialRefresh();},{once:true});
-  v.addEventListener('canplay',   ()=>{go();forceVideoMaterialRefresh();},{once:true});
-  v.addEventListener('playing',   ()=>{log('🎞️ playing');forceVideoMaterialRefresh();},{once:true});
-  setTimeout(()=>{ if(v.readyState<2){ v.load(); go(); } forceVideoMaterialRefresh(); }, 400);
-}
-
-/* 工具 */
-async function waitSceneLoaded(el){if(el.hasLoaded)return;await new Promise(r=>el.addEventListener('loaded',r,{once:true}));}
-async function ensureCam(){
-  if(!navigator.mediaDevices?.getUserMedia)throw new Error('無法取用相機');
-  const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-  s.getTracks().forEach(t=>t.stop());
+/* 單純的播放保底 */
+function tryPlayVideo(){
+  const kick=()=>v.play().catch(()=>{});
+  kick();
+  v.addEventListener('loadeddata',kick,{once:true});
+  v.addEventListener('canplay',kick,{once:true});
+  window.addEventListener('touchstart',kick,{once:true,passive:true});
+  window.addEventListener('pointerdown',kick,{once:true});
 }
 
 /* 啟動流程 */
 document.getElementById('btnStart').onclick=async()=>{
   try{
     statusEl.textContent='請授權相機…';
-    await ensureCam();
+    if(!navigator.mediaDevices?.getUserMedia) throw new Error('無法取用相機');
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    s.getTracks().forEach(t=>t.stop());
+
     statusEl.textContent='啟動中…';
-    await waitSceneLoaded(scene);
+    if(!scene.hasLoaded){
+      await new Promise(r=>scene.addEventListener('loaded',r,{once:true}));
+    }
     const arSystem=scene.systems['mindar-image-system']||scene.systems['mindar-image'];
     await arSystem.start();
 
-    // 強制同步 renderer 尺寸（防偏移/變窄）
-    const syncSize = () => {
-      const r = scene.renderer;
-      if (r && r.setSize) r.setSize(window.innerWidth, window.innerHeight, true);
-      const c = scene.canvas;
-      if (c){ c.style.width='100vw'; c.style.height='calc(var(--vh) * 100)'; }
-    };
-    syncSize();
-    window.addEventListener('resize', syncSize);
-
+    // 讓 MindAR 自己處理尺寸，不再強制 setSize（避免變窄偏右）
     statusEl.textContent='請對準錨點';
     log('✅ AR 已啟動');
 
-    // 小預覽窗（不影響版面）
-    if (arSystem.video && arSystem.video.srcObject){
-      bgPreview.srcObject = arSystem.video.srcObject;
-      bgPreview.play().catch(()=>{});
-    }
-
-    v.load(); tryPlayVideoChain();
-    setTimeout(()=>{ if(!locked){ wall.setAttribute('visible','true'); tryPlayVideoChain(); }},2000);
+    v.load();
+    tryPlayVideo();
   }catch(e){ statusEl.textContent='啟動失敗'; log('🟥 '+e.message); }
 };
 
-/* 使用者手勢保底 */
-window.addEventListener('touchstart', ()=>{v.play().catch(()=>{});},{once:true,passive:true});
-window.addEventListener('pointerdown', ()=>{v.play().catch(()=>{});},{once:true});
+/* 手動播放 */
 document.getElementById('btnForcePlay').onclick=()=>{v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));};
 
-/* target 事件 */
+/* target 事件（先讓 marker 上的小平面亮起驗證） */
 marker.addEventListener('targetFound',()=>{
-  log('🎯 targetFound'); tfBadge.style.display='block';
-  tryPlayVideoChain();
-  const m=marker.object3D.matrixWorld.clone();
-  wall.object3D.matrix.copy(m);
-  wall.object3D.matrix.decompose(wall.object3D.position,wall.object3D.quaternion,wall.object3D.scale);
-  wall.setAttribute('visible','true');
-  locked=true;
+  tfBadge.style.display='block';
+  log('🎯 targetFound');
+  foundOnce=true;
+  document.getElementById('testOnMarker').setAttribute('visible','true');
+  v.play().catch(()=>{});
+  btnShowWall.disabled=false;
 });
 marker.addEventListener('targetLost',()=>{tfBadge.style.display='none';});
+
+/* 切到大牆：把大牆節點掛到 marker 下面，再縮放到較合理的大小（先示意 3m 寬） */
+btnShowWall.onclick=()=>{
+  if(!foundOnce){ return; }
+  // 掛到 marker（避免世界矩陣拷貝出現座標/比例差異）
+  marker.appendChild(wall);
+  // 以 3 公尺寬示意，保持原始寬高比（你可改回 15.14 x 3.283）
+  wallVideo.setAttribute('width', 3.0);
+  wallVideo.setAttribute('height', 3.0 * (3.283/15.14));
+  wall.setAttribute('position','0 0 0.01');
+  wall.setAttribute('visible','true');
+  v.play().catch(()=>{});
+  log('🧱 已切到大牆平面（示意 3m 寬，可再調整為實際 15.14m）');
+};
 
 /* === 診斷 === */
 const nv=document.getElementById('nativeV');
@@ -245,6 +167,7 @@ function logD(s){dlog.textContent+=s+'\n';dlog.scrollTop=dlog.scrollHeight;}
 function updateStat(){dstat.textContent=`readyState=${v.readyState} networkState=${v.networkState} muted=${v.muted}`;}
 ['loadedmetadata','loadeddata','canplay','playing','pause','ended','waiting','stalled','suspend','error']
   .forEach(ev=>v.addEventListener(ev,()=>{logD('video event:'+ev);updateStat();}));
+
 dPlay.onclick=async()=>{nv.src=v.currentSrc||v.src;nv.muted=true;nv.style.display='block';dClose.style.display='inline-block';try{await nv.play();logD('✅ 原生播放成功');}catch(e){logD('❌ '+e.message);}updateStat();};
 dClose.onclick=()=>{nv.pause();nv.style.display='none';dClose.style.display='none';};
 
