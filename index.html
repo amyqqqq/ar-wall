@@ -3,100 +3,32 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>大牆 AR｜單錨鎖定＋校正（直接掛 arSystem.video｜熱修版）</title>
+<title>大牆 AR｜單錨鎖定＋校正（穩定啟播版）</title>
 
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
 <style>
-  html,body{
-    margin:0;
-    height:100%;
-    background:#000;
-    color:#0f0;
-    font-family:monospace;
-    overflow:hidden;
-  }
-  a-scene{
-    position:fixed !important;
-    inset:0 !important;
-    width:100vw !important;
-    height:100vh !important;
-    z-index:1;
-  }
-  canvas.a-canvas{
-    width:100vw !important;
-    height:100vh !important;
-    background:transparent !important;
-    pointer-events:none !important;
-    z-index:1;
-  }
-  #bgCam{
-    position:fixed;
-    left:0; top:0;
-    width:100vw; height:100vh;
-    object-fit:cover;
-    z-index:0;
-    display:block;
-    opacity:1;
-    transform:none !important;
-  }
+  html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace;overflow:hidden;}
+  a-scene{position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:1;}
+  canvas.a-canvas{width:100vw !important;height:100vh !important;background:transparent !important;pointer-events:none !important;z-index:1;}
+  #bgCam{position:fixed;left:0;top:0;width:100vw;height:100vh;object-fit:cover;z-index:0;display:block;opacity:1;transform:none !important;}
   .mindar-ui-loading,.mindar-ui-scanning{display:none !important;}
-
   #top{position:fixed;left:8px;top:8px;z-index:10;}
-  #log{
-    position:fixed;left:8px;bottom:8px;right:8px;
-    height:140px;overflow:auto;
-    background:rgba(0,0,0,.55);
-    padding:8px;z-index:10;font-size:12px;line-height:1.25;
-  }
-  /* 熱修版：控制列先顯示（debug） */
-  #ctrl{
-    position:fixed;left:8px;bottom:160px;z-index:10;
-    background:rgba(0,0,0,.5);border-radius:10px;
-    padding:8px;display:block;
-  }
+  #log{position:fixed;left:8px;bottom:8px;right:8px;height:140px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:10;font-size:12px;line-height:1.25;}
+  #ctrl{position:fixed;left:8px;bottom:160px;z-index:10;background:rgba(0,0,0,.5);border-radius:10px;padding:8px;display:block;}
   #ctrl button{margin:2px 3px;padding:8px 12px;}
   .row{margin:4px 0;}
-
-  /* 半透明錨點圖（targetFound 後淡出） */
-  #anchorGhost{
-    position:fixed; left:50%; top:50%;
-    transform:translate(-50%,-50%);
-    max-width:min(80vw,80vh); height:auto;
-    opacity:0.35; z-index:9; pointer-events:none; display:none;
-    filter:drop-shadow(0 0 4px rgba(0,0,0,.4));
-    transition:opacity .25s ease;
-  }
-
-  /* 錄影紅點提示 */
-  #recDot{
-    position:fixed; right:12px; top:12px;
-    width:12px; height:12px;
-    background:#f33;
-    border-radius:50%;
-    box-shadow:0 0 10px rgba(255,51,51,0.67);
-    z-index:12;
-    display:none;
-  }
-
-  /* 🎯 targetFound 角標 */
-  #tfBadge{
-    position:fixed; right:12px; top:40px;
-    z-index:12; background:#f33; color:#fff;
-    padding:6px 10px; border-radius:8px; display:none;
-    font-weight:bold;
-  }
+  #anchorGhost{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(80vw,80vh);height:auto;opacity:0.35;z-index:9;pointer-events:none;display:none;filter:drop-shadow(0 0 4px rgba(0,0,0,.4));transition:opacity .25s ease;}
+  #recDot{position:fixed;right:12px;top:12px;width:12px;height:12px;background:#f33;border-radius:50%;box-shadow:0 0 10px rgba(255,51,51,0.67);z-index:12;display:none;}
+  #tfBadge{position:fixed;right:12px;top:40px;z-index:12;background:#f33;color:#fff;padding:6px 10px;border-radius:8px;display:none;font-weight:bold;}
 </style>
 </head>
 <body>
-<!-- 背景相機：等會把 arSystem.video 指/移過來 -->
+<!-- 背景相機：只用這個，別更改 arSystem.video 的 id -->
 <video id="bgCam" autoplay muted playsinline webkit-playsinline></video>
 
-<!-- 半透明錨點預覽（請放與 .mind 訓練相同的原圖） -->
 <img id="anchorGhost" src="./anchor.png" alt="錨點對齊預覽"/>
-
-<!-- 錄影提示點、targetFound 角標 -->
 <div id="recDot"></div>
 <div id="tfBadge">🎯 targetFound</div>
 
@@ -105,7 +37,6 @@
   <span id="status">未啟動</span>
 </div>
 
-<!-- 熱修版：控制列預設顯示，確保看得到拍照/錄影 -->
 <div id="ctrl">
   <div class="row">
     位置：<button onclick="nudge(-step,0)">←</button><button onclick="nudge(step,0)">→</button>
@@ -136,15 +67,16 @@
   mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1;"
   renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
-  <a-assets>
-    <video id="vid" src="./video.mp4" loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+  <a-assets timeout="30000">
+    <!-- ✅ 加上 autoplay，依使用者手勢後可被允許 -->
+    <video id="vid" src="./video.mp4" autoplay loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
   </a-assets>
 
   <a-entity id="marker" mindar-image-target="targetIndex:0"></a-entity>
   <a-entity id="wallPlane" visible="false">
-    <!-- 🔧 修正點：保留影片紋理並啟用雙面 -->
+    <!-- ✅ 影片雙保險：a-video 的 src 與 material.src 皆指向 #vid -->
     <a-video id="wallVideo" width="15.14" height="3.283" position="0 0 0"
-      material="shader:flat; src:#vid; side:double"></a-video>
+      src="#vid" material="shader:flat; src:#vid; side:double"></a-video>
   </a-entity>
 
   <a-entity camera="facingMode: environment"></a-entity>
@@ -159,7 +91,8 @@ const ctrl=document.getElementById('ctrl');
 const scene=document.querySelector('a-scene');
 const marker=document.getElementById('marker');
 const wall=document.getElementById('wallPlane');
-const videoOverlay=document.getElementById('vid');
+const wallVideoEl=document.getElementById('wallVideo');
+const videoEl=document.getElementById('vid');     // <video> 素材
 const bgCam=document.getElementById('bgCam');
 const ghost=document.getElementById('anchorGhost');
 const recDot=document.getElementById('recDot');
@@ -218,34 +151,26 @@ btnStart.onclick=async()=>{
     statusEl.textContent='請對準錨點';
     log('✅ AR 已啟動，等待 targetFound…');
 
-    /* 將 MindAR 的攝影機 video 接管到背景 */
-    if(arSystem.video){
+    /* 只複製串流到既有 #bgCam（不要改 arSystem.video 的 id） */
+    if(arSystem.video && arSystem.video.srcObject){
       try{
-        arSystem.video.setAttribute('id','bgCam');
-        arSystem.video.setAttribute('playsinline','');
-        arSystem.video.setAttribute('webkit-playsinline','');
-        arSystem.video.muted=true;
-        document.body.prepend(arSystem.video);
-      }catch(_){}
-      if(arSystem.video.srcObject&&bgCam!==arSystem.video){
-        try{bgCam.srcObject=arSystem.video.srcObject;}catch(_){}
-      }
+        bgCam.muted=true;
+        bgCam.playsInline=true;
+        bgCam.srcObject=arSystem.video.srcObject;
+        bgCam.play().catch(()=>{});
+      }catch(e){log('🟥 複製相機串流失敗：'+e.message);}
     }
-    const camV=document.getElementById('bgCam');
-    if(camV){
-      camV.style.position='fixed';camV.style.left='0';camV.style.top='0';
-      camV.style.width='100vw';camV.style.height='100vh';
-      camV.style.objectFit='cover';camV.style.zIndex='0';camV.style.transform='none';
-      camV.addEventListener('loadedmetadata',()=>{log(`📷 相機啟動：${camV.videoWidth}x${camV.videoHeight}`);});
-    }else{log('🟥 取得 arSystem.video 失敗');}
+    bgCam.addEventListener('loadedmetadata',()=>{log(`📷 相機啟動：${bgCam.videoWidth}x${bgCam.videoHeight}`);});
 
-    /* 強化素材影片播放條件（手勢後呼叫） */
-    videoOverlay.setAttribute('playsinline','');
-    videoOverlay.setAttribute('webkit-playsinline','');
-    videoOverlay.setAttribute('muted','');
-    videoOverlay.muted=true;
-    videoOverlay.loop=true;
-    videoOverlay.play().catch(e=>log('video.play() 初次嘗試失敗：'+e.message));
+    /* 強化素材影片播放條件：手勢後立即暖機 */
+    videoEl.muted=true;
+    videoEl.playsInline=true;
+    videoEl.load(); // 重新評估來源
+    const warmPlay = async () => {
+      try{ await videoEl.play(); log('▶️ 素材暖機播放成功'); }
+      catch(e){ log('⏸️ 素材暖機被擋：'+e.name); }
+    };
+    warmPlay();
 
     /* 顯示錨點圖輔助對齊 */
     ghost.style.display='block';
@@ -254,7 +179,7 @@ btnStart.onclick=async()=>{
     setTimeout(()=>{
       if(!locked){
         wall.setAttribute('visible','true');
-        videoOverlay.play().catch(()=>{});
+        tryPlayVideoChain();
         log('🧪 偵錯：2 秒未觸發 targetFound，已先強制顯示覆層/嘗試播放影片');
       }
     },2000);
@@ -265,15 +190,31 @@ btnStart.onclick=async()=>{
   }
 };
 
+/* 影片強制播放鏈（multi-fallback） */
+function tryPlayVideoChain(){
+  // 1) 確認 a-video 材質來源都正確
+  wallVideoEl.setAttribute('src','#vid');
+  // 單獨更新 material 的 src 可強制刷新貼圖
+  const m = wallVideoEl.getAttribute('material') || {};
+  wallVideoEl.setAttribute('material', Object.assign({}, m, {src:'#vid', shader:'flat', side:'double'}));
+
+  // 2) 連續事件鏈上嘗試 play()
+  const tryPlay = ()=>videoEl.play().catch(()=>{});
+  tryPlay();
+  videoEl.addEventListener('loadeddata',tryPlay,{once:true});
+  videoEl.addEventListener('canplay',tryPlay,{once:true});
+  videoEl.addEventListener('playing',()=>log('🎞️ 影片 playing'),{once:true});
+
+  // 3) iOS/Chrome 偶發黑屏 → 重新 load 再 play
+  setTimeout(()=>{ if(videoEl.readyState<2){ videoEl.load(); tryPlay(); }}, 400);
+}
+
 /* targetFound / targetLost */
 marker.addEventListener('targetFound',()=>{
   log('🎯 找到錨點 → 鎖定位姿');
   if(tfBadge) tfBadge.style.display='block';
 
-  /* 多次保險呼叫播放 */
-  const tryPlay=()=>videoOverlay.play().catch(()=>{});
-  tryPlay();
-  videoOverlay.addEventListener('canplay',tryPlay,{once:true});
+  tryPlayVideoChain(); // ✅ 在鎖定瞬間刷新材質並連續嘗試播放
 
   /* 把 marker 姿態拷到牆面 */
   const m=marker.object3D.matrixWorld.clone();
@@ -328,7 +269,7 @@ function toggleGhost(){
 function setGhostAlpha(v){ghost.style.opacity=v;}
 ghost.style.display='block';ghost.style.opacity=getGhostAlpha();
 
-/* ====== 影像合成（只含相機＋A-Frame；不含錨點圖） ====== */
+/* ====== 影像合成（相機＋A-Frame；不含錨點圖） ====== */
 function drawCompositeTo(canvas){
   const ctx=canvas.getContext('2d');
   const w=window.innerWidth,h=window.innerHeight;
@@ -348,8 +289,6 @@ function drawCompositeTo(canvas){
   // A-Frame 覆層
   const aCanvas=document.querySelector('canvas.a-canvas');
   if(aCanvas)ctx.drawImage(aCanvas,0,0,w,h);
-
-  // ✅ 不畫 ghost（錨點圖）
 }
 
 function downloadBlob(blob,filename){
