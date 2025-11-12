@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>大牆 AR｜單錨鎖定＋校正（三重保險版）</title>
+<title>大牆 AR｜單錨鎖定＋校正（三重保險版｜整合）</title>
 
+<!-- A-Frame + MindAR（順序很重要） -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
 <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
@@ -22,6 +23,9 @@
   #anchorGhost{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(80vw,80vh);height:auto;opacity:0.35;z-index:9;pointer-events:none;display:none;filter:drop-shadow(0 0 4px rgba(0,0,0,.4));transition:opacity .25s ease;}
   #recDot{position:fixed;right:12px;top:12px;width:12px;height:12px;background:#f33;border-radius:50%;box-shadow:0 0 10px rgba(255,51,51,0.67);z-index:12;display:none;}
   #tfBadge{position:fixed;right:12px;top:40px;z-index:12;background:#f33;color:#fff;padding:6px 10px;border-radius:8px;display:none;font-weight:bold;}
+  /* 診斷面板 */
+  #diag{position:fixed;right:8px;bottom:8px;z-index:9999;background:#000a;color:#fff;padding:8px;border-radius:8px;max-width:70vw;font:12px monospace}
+  #nativeV{display:none;position:fixed;inset:0;z-index:10000;width:100vw;height:100vh;object-fit:contain;background:#000}
 </style>
 </head>
 <body>
@@ -60,6 +64,17 @@
 
 <div id="log"></div>
 
+<!-- 診斷面板 + 原生播放 -->
+<div id="diag">
+  <div>診斷：<span id="dstat">未開始</span></div>
+  <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+    <button id="dPlay">原生播放</button>
+    <button id="dClose" style="display:none">關閉原生</button>
+  </div>
+  <div id="dlog" style="margin-top:6px;max-height:28vh;overflow:auto;white-space:pre-wrap"></div>
+</div>
+<video id="nativeV" playsinline webkit-playsinline controls muted></video>
+
 <a-scene
   embedded color-space="sRGB"
   vr-mode-ui="enabled:false"
@@ -68,18 +83,22 @@
   renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
   <a-assets timeout="30000">
+    <!-- 確保 crossorigin 搭配同網域或伺服器回 Access-Control-Allow-Origin -->
     <video id="vid" src="./video.mp4"
-      autoplay loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+      autoplay loop playsinline webkit-playsinline muted preload="auto"
+      x-webkit-airplay="deny" controlslist="nodownload noplaybackrate"
+      crossorigin="anonymous"></video>
   </a-assets>
 
   <a-entity id="marker" mindar-image-target="targetIndex:0">
-    <!-- 🧪 小測試片：直接掛在錨點上（可開關） -->
+    <!-- 小測試片（掛刷新元件） -->
     <a-plane id="testOnMarker" position="0 0 0.01" width="0.6" height="0.13"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01" visible="true"></a-plane>
+      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"
+      visible="true"></a-plane>
   </a-entity>
 
   <a-entity id="wallPlane" visible="false">
-    <!-- 牆面大畫面：用 a-plane 更穩（等價於 a-video） -->
+    <!-- 牆面大畫面（掛刷新元件） -->
     <a-plane id="wallVideo" width="15.14" height="3.283" position="0 0 0"
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"></a-plane>
   </a-entity>
@@ -88,6 +107,35 @@
 </a-scene>
 
 <script>
+/* ========= 影片貼圖連續刷新元件（關鍵補丁） ========= */
+AFRAME.registerComponent('video-texture-tick', {
+  schema: { src: {type:'selector'} },
+  init() {
+    this.video = this.data.src || document.querySelector('#vid');
+    this.mesh = null;
+    this.bind = () => {
+      const m = this.el.getObject3D('mesh'); if(!m) return;
+      this.mesh = m;
+      const mat = m.material;
+      if (mat && mat.map) { mat.map.image = this.video; mat.map.needsUpdate = true; mat.needsUpdate = true; }
+    };
+    this.el.addEventListener('model-loaded', this.bind);
+    this.bind();
+  },
+  tick() {
+    if (!this.mesh || !this.video) return;
+    if (this.video.readyState >= 2) {
+      const mat = this.mesh.material;
+      if (mat && mat.map) mat.map.needsUpdate = true;
+    }
+  }
+});
+// 掛到兩個平面
+window.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('wallVideo')?.setAttribute('video-texture-tick','src:#vid');
+  document.getElementById('testOnMarker')?.setAttribute('video-texture-tick','src:#vid');
+});
+
 const logEl=document.getElementById('log');
 const log=s=>{console.log(s);logEl.textContent+=s+"\n";logEl.scrollTop=logEl.scrollHeight;}
 const statusEl=document.getElementById('status');
@@ -97,7 +145,7 @@ const ctrl=document.getElementById('ctrl');
 const scene=document.querySelector('a-scene');
 const marker=document.getElementById('marker');
 const wall=document.getElementById('wallPlane');
-const wallPlaneEl=document.getElementById('wallVideo'); // 用 a-plane
+const wallPlaneEl=document.getElementById('wallVideo');
 const testOnMarker=document.getElementById('testOnMarker');
 const videoEl=document.getElementById('vid');
 const bgCam=document.getElementById('bgCam');
@@ -114,40 +162,30 @@ const LS_KEY='WALL_AR_LOCK_V3';
 let adj=JSON.parse(localStorage.getItem(LS_KEY)||'{"ox":0,"oy":0,"rz":0,"s":1}');
 let step=0.02,rotStep=0.8,basePose=null;
 
-/* —— 工具：強制刷新 Three.js 影片材質 —— */
+/* —— 材質保險刷新 —— */
 function forceVideoMaterialRefresh(){
-  // a-plane 的 mesh
   const mesh = wallPlaneEl.getObject3D('mesh');
   if(mesh && mesh.material){
     const mat = mesh.material;
-    if(mat.map && mat.map.image !== videoEl){
-      // 若材質貼圖還沒指向 <video>，手動補上
-      mat.map.image = videoEl;
-    }
-    if(mat.map){
-      mat.map.needsUpdate = true;
-    }
+    if(mat.map && mat.map.image !== videoEl){ mat.map.image = videoEl; }
+    if(mat.map){ mat.map.needsUpdate = true; }
     mat.needsUpdate = true;
     log('🧩 material.needsUpdate=true');
   }
-  // 錨點上的小測試片也刷新
   const mesh2 = testOnMarker.getObject3D('mesh');
   if(mesh2 && mesh2.material){
-    if(mesh2.material.map){
-      mesh2.material.map.needsUpdate = true;
-    }
+    if(mesh2.material.map){ mesh2.material.map.needsUpdate = true; }
     mesh2.material.needsUpdate = true;
   }
 }
 
-/* —— 套路：連續嘗試播放 + 材質刷新 —— */
+/* —— 連續嘗試播放 —— */
 function tryPlayVideoChain(){
   const tryPlay=()=>videoEl.play().catch(()=>{});
   tryPlay();
   videoEl.addEventListener('loadeddata',()=>{tryPlay(); forceVideoMaterialRefresh();},{once:true});
   videoEl.addEventListener('canplay',   ()=>{tryPlay(); forceVideoMaterialRefresh();},{once:true});
   videoEl.addEventListener('playing',   ()=>{log('🎞️ 影片 playing'); forceVideoMaterialRefresh();},{once:true});
-  // iOS 偶發：再補一次
   setTimeout(()=>{ if(videoEl.readyState<2){ videoEl.load(); tryPlay(); } forceVideoMaterialRefresh(); }, 400);
 }
 
@@ -198,11 +236,8 @@ btnStart.onclick=async()=>{
 
     // 複製串流到 #bgCam
     if(arSystem.video && arSystem.video.srcObject){
-      try{
-        bgCam.muted=true; bgCam.playsInline=true;
-        bgCam.srcObject=arSystem.video.srcObject;
-        bgCam.play().catch(()=>{});
-      }catch(e){log('🟥 複製相機串流失敗：'+e.message);}
+      try{ bgCam.muted=true; bgCam.playsInline=true; bgCam.srcObject=arSystem.video.srcObject; bgCam.play().catch(()=>{}); }
+      catch(e){log('🟥 複製相機串流失敗：'+e.message);}
     }
     bgCam.addEventListener('loadedmetadata',()=>{log(`📷 相機啟動：${bgCam.videoWidth}x${bgCam.videoHeight}`);});
 
@@ -244,9 +279,8 @@ marker.addEventListener('targetFound',()=>{
   log('🎯 找到錨點 → 鎖定位姿');
   tfBadge.style.display='block';
 
-  tryPlayVideoChain(); // 立刻刷新材質 & 播放
+  tryPlayVideoChain();
 
-  // 把 marker 姿態拷到牆面
   const m=marker.object3D.matrixWorld.clone();
   wall.object3D.matrix.copy(m);
   wall.object3D.matrix.decompose(
@@ -254,7 +288,6 @@ marker.addEventListener('targetFound',()=>{
   );
   wall.object3D.scale.set(1,1,1);
 
-  // 依牆面座標偏移
   const q=wall.object3D.quaternion;
   const right=new THREE.Vector3(1,0,0).applyQuaternion(q);
   const up=new THREE.Vector3(0,1,0).applyQuaternion(q);
@@ -263,7 +296,6 @@ marker.addEventListener('targetFound',()=>{
   wall.object3D.position.addScaledVector(right,dx);
   wall.object3D.position.addScaledVector(up,dy);
 
-  // 顯示覆層並保存基準姿態
   wall.setAttribute('visible','true');
   locked=true;
   statusEl.textContent='已鎖定，可校正並儲存';
@@ -271,12 +303,10 @@ marker.addEventListener('targetFound',()=>{
   applyResetPose();
   ctrl.style.display='block';
 
-  // 隱藏錨點圖
   ghost.style.opacity=0;
   setTimeout(()=>ghost.style.display='none',260);
 
-  // 再補一次材質刷新（防黑屏第一幀）
-  setTimeout(forceVideoMaterialRefresh, 120);
+  setTimeout(forceVideoMaterialRefresh,120);
 });
 
 marker.addEventListener('targetLost',()=>{
@@ -376,6 +406,38 @@ function stopRec(){
 }
 
 function toggleRec(){if(rec.running)stopRec();else startRec();}
+
+/* ======= 診斷：原生播放 & 事件 ======= */
+const v = document.getElementById('vid');
+const nv = document.getElementById('nativeV');
+const dstat = document.getElementById('dstat');
+const dlog = document.getElementById('dlog');
+const dPlay = document.getElementById('dPlay');
+const dClose = document.getElementById('dClose');
+
+function logD(s){ dlog.textContent += s + '\n'; dlog.scrollTop = dlog.scrollHeight; }
+function updateStat(){
+  const rs = v.readyState;  // 0..4
+  const ns = v.networkState; // 0..3
+  dstat.textContent = `readyState=${rs} networkState=${ns} muted=${v.muted}`;
+}
+['loadedmetadata','loadeddata','canplay','playing','pause','ended','waiting','stalled','suspend','ratechange','volumechange','error'].forEach(ev=>{
+  v.addEventListener(ev,()=>{ logD('video event: ' + ev); updateStat(); });
+});
+
+dPlay.onclick = async () => {
+  nv.src = v.currentSrc || v.src;
+  nv.muted = true; // 先靜音確保自動播放
+  nv.style.display = 'block';
+  dClose.style.display = 'inline-block';
+  try { await nv.play(); logD('✅ 原生 <video> 播放成功'); }
+  catch(e){ logD('❌ 原生播放失敗：' + e.message); }
+  updateStat();
+};
+dClose.onclick = ()=>{ nv.pause(); nv.style.display='none'; dClose.style.display='none'; };
+
+updateStat();
+logD('提示：請用 Android「Chrome」開啟、確保 https；影片與頁面同網域或伺服器回 Access-Control-Allow-Origin 與 Accept-Ranges。');
 </script>
 </body>
 </html>
