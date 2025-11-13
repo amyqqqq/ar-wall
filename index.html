@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜防偏移強制診斷版</title>
+<title>大牆 AR｜防偏移極簡影片測試版</title>
 
 <!-- A-Frame + MindAR -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
@@ -20,6 +20,7 @@
   }
   body{position:fixed; inset:0; overflow:hidden;}
 
+  /* 上方只有兩個按鈕：啟動 AR + 影片測試 */
   #top{
     position:fixed;
     left:8px;
@@ -30,8 +31,9 @@
     align-items:center;
     flex-wrap:wrap;
   }
-  #top button{padding:6px 10px;font-size:13px}
+  #top button{padding:6px 10px;font-size:14px}
   #status{background:#000a;padding:4px 8px;border-radius:6px}
+
   #log{
     position:fixed;
     left:8px;
@@ -44,18 +46,6 @@
     z-index:100003;
     font-size:11px;
     line-height:1.25;
-  }
-  #tfBadge{
-    position:fixed;
-    right:12px;
-    top:40px;
-    z-index:100003;
-    background:#29b6f6;
-    color:#000;
-    padding:6px 10px;
-    border-radius:8px;
-    display:none;
-    font-weight:bold;
   }
 
   .mindar-container{
@@ -84,13 +74,9 @@
 </style>
 </head>
 <body>
-<div id="tfBadge">🎯 targetFound</div>
 <div id="top">
   <button id="btnStart">啟動 AR</button>
-  <button id="btnForcePlay">▶ 手動播放</button>
-  <button id="btnShowTest">顯示桃紅平面</button>
   <button id="btnVideoTest">影片測試</button>
-  <button id="btnWall" disabled>切到大牆</button>
   <span id="status">未啟動</span>
 </div>
 <div id="log"></div>
@@ -103,26 +89,13 @@
   renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
   <a-assets timeout="30000">
+    <!-- 你的影片：確認跟 index.html 同資料夾 -->
     <video id="vid" src="./video.mp4" preload="auto"
       playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
 
-  <!-- 錨點 entity -->
-  <a-entity id="marker" mindar-image-target="targetIndex:0">
-    <a-plane id="testOnMarker" position="0 0 0.01" width="0.6" height="0.13"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"
-      visible="false"></a-plane>
-  </a-entity>
-
-  <!-- 大牆平面 -->
-  <a-entity id="wallPlane" visible="false">
-    <a-plane id="wallVideo" width="15.14" height="3.283" position="0 0 0"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"></a-plane>
-  </a-entity>
-
-  <!-- camera + debug 平面（跟畫面一起動） -->
-  <a-entity id="camRig" camera="facingMode: environment">
-    <!-- 一開始只是桃紅色；之後可以改成貼影片 -->
+  <!-- 只留一個 debug 平面，貼在鏡頭前方 -->
+  <a-entity camera="facingMode: environment" id="camRig">
     <a-plane id="debugPlane" position="0 0 -1"
       width="4" height="2"
       material="color:#ff00ff; opacity:0.8; side:double"
@@ -137,18 +110,8 @@ const log=s=>{console.log(s);logEl.textContent+=s+"\n";logEl.scrollTop=logEl.scr
 
 const statusEl=document.getElementById('status');
 const v=document.getElementById('vid');
-const wall=document.getElementById('wallPlane');
-const wallVideo=document.getElementById('wallVideo');
-const marker=document.getElementById('marker');
 const scene=document.querySelector('a-scene');
-const tfBadge=document.getElementById('tfBadge');
-const btnWall=document.getElementById('btnWall');
-const btnShowTest=document.getElementById('btnShowTest');
-const btnVideoTest=document.getElementById('btnVideoTest');
-const testOnMarker=document.getElementById('testOnMarker');
 const debugPlane=document.getElementById('debugPlane');
-
-let found=false;
 
 function lockMindARContainer(){
   const c=document.querySelector('.mindar-container');
@@ -167,6 +130,7 @@ function lockMindARContainer(){
   });
 }
 
+// 點一下就試著播放影片（for iOS）
 function tryPlay(){ v.play().catch(()=>{}); }
 ['loadeddata','canplay'].forEach(ev=>v.addEventListener(ev,tryPlay,{once:true}));
 window.addEventListener('pointerdown',tryPlay,{once:true});
@@ -195,8 +159,8 @@ document.getElementById('btnStart').onclick=async()=>{
     lockMindARContainer();
     window.addEventListener('resize', lockMindARContainer);
 
-    statusEl.textContent='請對準錨點';
-    log('✅ AR 已啟動（wall-anchor.mind?v=1113）');
+    statusEl.textContent='AR 已啟動';
+    log('✅ AR 已啟動（極簡影片測試版）');
     v.load(); tryPlay();
   }catch(e){
     statusEl.textContent='啟動失敗';
@@ -204,51 +168,15 @@ document.getElementById('btnStart').onclick=async()=>{
   }
 };
 
-document.getElementById('btnForcePlay').onclick=()=>{
-  v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));
-};
-
-/* 顯示純桃紅平面：只測 3D 繪圖 */
-btnShowTest.onclick=()=>{
-  debugPlane.setAttribute('material','color:#ff00ff; opacity:0.8; side:double');
-  debugPlane.setAttribute('visible','true');
-  log('🧪 顯示桃紅平面（正中央）。');
-};
-
-/* 改成貼影片在 debug 平面：測影片＋材質 */
-btnVideoTest.onclick=()=>{
+document.getElementById('btnVideoTest').onclick=()=>{
+  // 把 debug 平面材質改成影片
   debugPlane.setAttribute(
     'material',
     'shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01'
   );
   debugPlane.setAttribute('visible','true');
-  v.play().then(()=>log('🎬 影片測試：debug 平面已貼上影片並嘗試播放'))
+  v.play().then(()=>log('🎬 影片測試：已貼到中央平面並嘗試播放'))
           .catch(e=>log('🟥 影片播放錯誤：'+e.message));
-};
-
-marker.addEventListener('targetFound',()=>{
-  tfBadge.style.display='block';
-  log('🎯 targetFound（有抓到錨點影像）');
-  found=true;
-  testOnMarker.setAttribute('visible','true');
-  testOnMarker.setAttribute('position','0 0 0.01');
-  v.play().catch(()=>{});
-  btnWall.disabled=false;
-});
-marker.addEventListener('targetLost',()=>{
-  tfBadge.style.display='none';
-  log('⚠ targetLost');
-});
-
-btnWall.onclick=()=>{
-  if(!found) return;
-  marker.appendChild(wall);
-  wallVideo.setAttribute('width', 3.0);
-  wallVideo.setAttribute('height', 3.0*(3.283/15.14));
-  wall.setAttribute('position','0 0 0.01');
-  wall.setAttribute('visible','true');
-  v.play().catch(()=>{});
-  log('🧱 已切到大牆（示意 3m 寬）。');
 };
 </script>
 </body>
