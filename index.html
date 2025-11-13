@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜防偏移強制版</title>
+<title>大牆 AR｜防偏移強制診斷版</title>
 
 <!-- A-Frame + MindAR -->
 <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
@@ -12,34 +12,36 @@
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace}
-  /* 關鍵：整個頁面固定為 100vw/100vh，避免瀏覽器 UI 造成 reflow */
   body{position:fixed; inset:0; overflow:hidden}
 
-  /* 只動 UI，不動 A-Frame 預設 canvas 規則 */
-  #top{position:fixed;left:8px;top:8px;z-index:100003;display:flex;gap:6px;align-items:center}
-  #top button{padding:8px 12px}
+  #top{
+    position:fixed;left:8px;top:8px;z-index:100003;
+    display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  }
+  #top button{padding:6px 10px;font-size:13px}
   #status{background:#000a;padding:4px 8px;border-radius:6px}
-  #log{position:fixed;left:8px;bottom:8px;right:8px;height:120px;overflow:auto;background:rgba(0,0,0,.55);padding:8px;z-index:100003;font-size:12px;line-height:1.25}
-  #tfBadge{position:fixed;right:12px;top:40px;z-index:100003;background:#29b6f6;color:#000;padding:6px 10px;border-radius:8px;display:none;font-weight:bold;}
+  #log{
+    position:fixed;left:8px;bottom:8px;right:8px;height:120px;
+    overflow:auto;background:rgba(0,0,0,.55);padding:8px;
+    z-index:100003;font-size:11px;line-height:1.25;
+  }
+  #tfBadge{
+    position:fixed;right:12px;top:40px;z-index:100003;
+    background:#29b6f6;color:#000;padding:6px 10px;
+    border-radius:8px;display:none;font-weight:bold;
+  }
 
-  /* 關鍵：把 MindAR 的容器與其內部 video/canvas 強制鋪滿視窗 */
   .mindar-container{
     position:fixed !important; inset:0 !important;
-    width:100vw !important; height:100vh !important; overflow:hidden !important; 
-    touch-action:none !important;
+    width:100vw !important; height:100vh !important;
+    overflow:hidden !important; touch-action:none !important;
   }
   .mindar-container video, .mindar-container canvas{
     position:absolute !important; left:0 !important; top:0 !important;
     width:100% !important; height:100% !important;
   }
-  /* 不要 object-fit，避免比例異常；若仍見黑邊再改成 cover */
   .mindar-container video{object-fit:fill !important; transform:none !important}
 
-  /* 關掉診斷原生播放器與面板的預設顯示，避免「右下角矩形」誤判 */
-  #nativeV{display:none !important}
-  #diag{display:none !important}
-
-  /* MindAR 內建 UI 全隱藏 */
   .mindar-ui-loading,.mindar-ui-scanning{display:none !important;}
 </style>
 </head>
@@ -48,28 +50,32 @@
 <div id="top">
   <button id="btnStart">啟動 AR</button>
   <button id="btnForcePlay">▶ 手動播放</button>
+  <button id="btnShowTest">顯示測試平面</button>
   <button id="btnWall" disabled>切到大牆</button>
   <span id="status">未啟動</span>
 </div>
 <div id="log"></div>
 
-<!-- AR 場景（讓 MindAR 自己建構 DOM；此處不加 embedded、不覆寫 canvas） -->
 <a-scene
   color-space="sRGB"
   vr-mode-ui="enabled:false"
   device-orientation-permission-ui="enabled:false"
-  mindar-image="imageTargetSrc: ./wall-anchor.mind; autoStart: false; maxTrack: 1"
+  mindar-image="imageTargetSrc: ./wall-anchor.mind?v=1113; autoStart: false; maxTrack: 1"
   renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
   <a-assets timeout="30000">
     <video id="vid" src="./video.mp4" preload="auto" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
 
+  <!-- 目標錨點 -->
   <a-entity id="marker" mindar-image-target="targetIndex:0">
+    <!-- 貼在錨點上的小測試平面 -->
     <a-plane id="testOnMarker" position="0 0 0.01" width="0.6" height="0.13"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01" visible="false"></a-plane>
+      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"
+      visible="false"></a-plane>
   </a-entity>
 
+  <!-- 大牆平面（之後再用按鈕切過去） -->
   <a-entity id="wallPlane" visible="false">
     <a-plane id="wallVideo" width="15.14" height="3.283" position="0 0 0"
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"></a-plane>
@@ -81,6 +87,7 @@
 <script>
 const logEl=document.getElementById('log');
 const log=s=>{console.log(s);logEl.textContent+=s+"\n";logEl.scrollTop=logEl.scrollHeight;}
+
 const statusEl=document.getElementById('status');
 const v=document.getElementById('vid');
 const wall=document.getElementById('wallPlane');
@@ -89,10 +96,11 @@ const marker=document.getElementById('marker');
 const scene=document.querySelector('a-scene');
 const tfBadge=document.getElementById('tfBadge');
 const btnWall=document.getElementById('btnWall');
+const btnShowTest=document.getElementById('btnShowTest');
+const testOnMarker=document.getElementById('testOnMarker');
 
 let found=false;
 
-/* 嚴格鋪滿：等 MindAR 插入 .mindar-container 後再鎖一次（含旋轉/回到前景） */
 function lockMindARContainer(){
   const c=document.querySelector('.mindar-container');
   if(!c) return;
@@ -101,7 +109,6 @@ function lockMindARContainer(){
   c.style.width='100vw';
   c.style.height='100vh';
   c.style.overflow='hidden';
-  // 內部節點也鎖一次
   c.querySelectorAll('video,canvas').forEach(el=>{
     el.style.position='absolute';
     el.style.left='0'; el.style.top='0';
@@ -124,40 +131,58 @@ document.getElementById('btnStart').onclick=async()=>{
     statusEl.textContent='啟動中…';
     if(!scene.hasLoaded) await new Promise(r=>scene.addEventListener('loaded',r,{once:true}));
     const arSystem=scene.systems['mindar-image-system']||scene.systems['mindar-image'];
-    await arSystem.start();
 
-    // 鎖容器尺寸（啟動後 MindAR 會插入 .mindar-container）
+    scene.addEventListener('arReady',()=>log('✅ arReady'),{once:true});
+    scene.addEventListener('arError',e=>log('🟥 arError: '+e.detail));
+
+    await arSystem.start();
     lockMindARContainer();
     window.addEventListener('resize', lockMindARContainer);
 
     statusEl.textContent='請對準錨點';
-    log('✅ AR 已啟動');
+    log('✅ AR 已啟動（wall-anchor.mind?v=1113）');
     v.load(); tryPlay();
-  }catch(e){ statusEl.textContent='啟動失敗'; log('🟥 '+e.message); }
+  }catch(e){
+    statusEl.textContent='啟動失敗';
+    log('🟥 '+e.message);
+  }
 };
 
-document.getElementById('btnForcePlay').onclick=()=>{v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));};
+document.getElementById('btnForcePlay').onclick=()=>{
+  v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));
+};
+
+/* 按鈕：不管有沒有 targetFound，直接把測試平面打開 */
+btnShowTest.onclick=()=>{
+  testOnMarker.setAttribute('visible','true');
+  testOnMarker.setAttribute('position','0 0 -2'); // 推到鏡頭前面
+  v.play().catch(()=>{});
+  log('🧪 已顯示測試平面（正前方 -2m），確認影片紋理 OK。');
+};
 
 marker.addEventListener('targetFound',()=>{
   tfBadge.style.display='block';
-  log('🎯 targetFound');
+  log('🎯 targetFound（有抓到錨點影像）');
   found=true;
-  document.getElementById('testOnMarker').setAttribute('visible','true');
+  testOnMarker.setAttribute('visible','true');
+  testOnMarker.setAttribute('position','0 0 0.01'); // 貼回錨點上
   v.play().catch(()=>{});
   btnWall.disabled=false;
 });
-marker.addEventListener('targetLost',()=>{tfBadge.style.display='none';});
+marker.addEventListener('targetLost',()=>{
+  tfBadge.style.display='none';
+  log('⚠ targetLost');
+});
 
 btnWall.onclick=()=>{
   if(!found) return;
   marker.appendChild(wall);
-  // 先示意 3m 寬，確認貼合不偏移後再改回 15.14 × 3.283
   wallVideo.setAttribute('width', 3.0);
   wallVideo.setAttribute('height', 3.0*(3.283/15.14));
   wall.setAttribute('position','0 0 0.01');
   wall.setAttribute('visible','true');
   v.play().catch(()=>{});
-  log('🧱 已切到大牆（示意 3m 寬）。若穩定再改回 15.14 × 3.283。');
+  log('🧱 已切到大牆（示意 3m 寬）。');
 };
 </script>
 </body>
