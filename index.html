@@ -176,6 +176,32 @@ function tryPlay(){ v.play().catch(()=>{}); }
 window.addEventListener('pointerdown', tryPlay, {once:true});
 window.addEventListener('touchstart', tryPlay, {once:true, passive:true});
 
+// 影片正播 ↔ 反播 ping-pong 循環
+let reverseMode = false;   // false = 正播, true = 反播
+
+// 確保一開始是正播
+v.playbackRate = 1;
+
+// 每次播完自動換方向
+v.addEventListener('ended', () => {
+  reverseMode = !reverseMode;
+
+  if (reverseMode) {
+    // 切成反向播放：從結尾往回播
+    v.pause();
+    v.currentTime = v.duration - 0.01; // 避免卡在 ended
+    v.playbackRate = -1;
+    v.play().catch(()=>{});
+  } else {
+    // 切回正向播放：從開頭播
+    v.pause();
+    v.currentTime = 0.01;
+    v.playbackRate = 1;
+    v.play().catch(()=>{});
+  }
+});
+
+
 function updatePosLabel(){
   if(activeMarkerIndex === null){
     posInfo.textContent = '';
