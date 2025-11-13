@@ -88,7 +88,8 @@
 <div id="top">
   <button id="btnStart">啟動 AR</button>
   <button id="btnForcePlay">▶ 手動播放</button>
-  <button id="btnShowTest">顯示測試平面</button>
+  <button id="btnShowTest">顯示桃紅平面</button>
+  <button id="btnVideoTest">影片測試</button>
   <button id="btnWall" disabled>切到大牆</button>
   <span id="status">未啟動</span>
 </div>
@@ -119,8 +120,9 @@
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"></a-plane>
   </a-entity>
 
-  <!-- ★ camera + debug 平面（一定跟著畫面走） -->
+  <!-- camera + debug 平面（跟畫面一起動） -->
   <a-entity id="camRig" camera="facingMode: environment">
+    <!-- 一開始只是桃紅色；之後可以改成貼影片 -->
     <a-plane id="debugPlane" position="0 0 -1"
       width="4" height="2"
       material="color:#ff00ff; opacity:0.8; side:double"
@@ -142,6 +144,7 @@ const scene=document.querySelector('a-scene');
 const tfBadge=document.getElementById('tfBadge');
 const btnWall=document.getElementById('btnWall');
 const btnShowTest=document.getElementById('btnShowTest');
+const btnVideoTest=document.getElementById('btnVideoTest');
 const testOnMarker=document.getElementById('testOnMarker');
 const debugPlane=document.getElementById('debugPlane');
 
@@ -205,10 +208,22 @@ document.getElementById('btnForcePlay').onclick=()=>{
   v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));
 };
 
-/* 顯示 debug 平面：一定在畫面正中央 */
+/* 顯示純桃紅平面：只測 3D 繪圖 */
 btnShowTest.onclick=()=>{
+  debugPlane.setAttribute('material','color:#ff00ff; opacity:0.8; side:double');
   debugPlane.setAttribute('visible','true');
-  log('🧪 已顯示 debug 平面（正中央一大片桃紅色）。');
+  log('🧪 顯示桃紅平面（正中央）。');
+};
+
+/* 改成貼影片在 debug 平面：測影片＋材質 */
+btnVideoTest.onclick=()=>{
+  debugPlane.setAttribute(
+    'material',
+    'shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01'
+  );
+  debugPlane.setAttribute('visible','true');
+  v.play().then(()=>log('🎬 影片測試：debug 平面已貼上影片並嘗試播放'))
+          .catch(e=>log('🟥 影片播放錯誤：'+e.message));
 };
 
 marker.addEventListener('targetFound',()=>{
