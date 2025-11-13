@@ -56,10 +56,19 @@
 
 <div id="top">
   <button id="btnWall" disabled>切到大牆</button>
+
+  <!-- 平移 -->
   <button id="btnLeft">⬅</button>
   <button id="btnRight">➡</button>
   <button id="btnUp">⬆</button>
   <button id="btnDown">⬇</button>
+
+  <!-- 旋轉微調 -->
+  <button id="btnRotL">⤿</button>
+  <button id="btnRotR">⤾</button>
+  <button id="btnTiltUp">↰</button>
+  <button id="btnTiltDown">↱</button>
+
   <span id="status">等待錨點…</span>
   <span id="posInfo"></span>
 </div>
@@ -125,6 +134,13 @@ const btnLeft  = document.getElementById('btnLeft');
 const btnRight = document.getElementById('btnRight');
 const btnUp    = document.getElementById('btnUp');
 const btnDown  = document.getElementById('btnDown');
+
+// 新增旋轉按鈕
+const btnRotL     = document.getElementById('btnRotL');
+const btnRotR     = document.getElementById('btnRotR');
+const btnTiltUp   = document.getElementById('btnTiltUp');
+const btnTiltDown = document.getElementById('btnTiltDown');
+
 const statusEl = document.getElementById('status');
 const posInfo  = document.getElementById('posInfo');
 
@@ -141,11 +157,17 @@ const WALL_W = 15.14;
 const WALL_H = 3.283;
 
 // 每一顆錨點各自的「牆位置微調值」
-// 先全部給一樣的預估值，之後可以針對每顆錨點用箭頭慢慢調
 const wallPosList = Array.from({length: NUM}, () => ({
   x: 6.2, // 這裡可以之後依照實際牆面一顆一顆改
   y: 0,
   z: 0
+}));
+
+// 每一顆錨點各自的「牆旋轉微調值」（角度，度數）
+const wallRotList = Array.from({length: NUM}, () => ({
+  x: 0, // 上下傾斜（pitch）
+  y: 0, // 左右偏轉（yaw）
+  z: 0  // 平面內旋轉（roll）
 }));
 
 // 手機互動一次給影片播放權限
@@ -160,7 +182,11 @@ function updatePosLabel(){
     return;
   }
   const p = wallPosList[activeMarkerIndex];
-  posInfo.textContent = `錨點 #${activeMarkerIndex} pos x=${p.x.toFixed(2)}m, y=${p.y.toFixed(2)}m`;
+  const r = wallRotList[activeMarkerIndex];
+  posInfo.textContent =
+    `錨點 #${activeMarkerIndex} ` +
+    `pos x=${p.x.toFixed(2)}m, y=${p.y.toFixed(2)}m ` +
+    `| rot x=${r.x.toFixed(1)}, y=${r.y.toFixed(1)}, z=${r.z.toFixed(1)}`;
 }
 
 // 綁定每一顆錨點的事件
@@ -179,10 +205,15 @@ markers.forEach((marker, idx) => {
       planes.forEach((p, i) => {
         p.object3D.visible = (i === idx);
       });
-      // 確保位置用目前的微調值
-      const p = wallPosList[idx];
-      plane.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
+
+      // 確保位置＋旋轉用目前的微調值
+      const pPos = wallPosList[idx];
+      const pRot = wallRotList[idx];
+      plane.setAttribute('position', `${pPos.x} ${pPos.y} ${pPos.z}`);
+      plane.setAttribute('rotation', `${pRot.x} ${pRot.y} ${pRot.z}`);
     }
+
+    updatePosLabel();
   });
 
   marker.addEventListener('targetLost', () => {
@@ -206,20 +237,22 @@ btnWall.addEventListener('click', () => {
     plane.setAttribute('width',  WALL_W);
     plane.setAttribute('height', WALL_H);
 
-    const p = wallPosList[idx];
-    plane.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
+    const pPos = wallPosList[idx];
+    const pRot = wallRotList[idx];
+    plane.setAttribute('position', `${pPos.x} ${pPos.y} ${pPos.z}`);
+    plane.setAttribute('rotation', `${pRot.x} ${pRot.y} ${pRot.z}`);
 
     // 只顯示當前這一顆錨點的 plane
     plane.object3D.visible = (idx === activeMarkerIndex);
   });
 
   isWallMode = true;
-  statusEl.textContent = '大牆模式：可用箭頭微調位置（每顆錨點各自記錄）';
+  statusEl.textContent = '大牆模式：可用箭頭微調位置＋旋轉（每顆錨點各自記錄）';
   updatePosLabel();
   v.play().catch(()=>{});
 });
 
-// 微調函式（左右上下）— 只動「目前這一顆錨點」的牆位置
+// 微調函式（左右上下平移）— 只動「目前這一顆錨點」的牆位置
 function nudge(dx, dy){
   if(!isWallMode) return;
   if(activeMarkerIndex === null) return;
@@ -233,10 +266,32 @@ function nudge(dx, dy){
   updatePosLabel();
 }
 
+// 旋轉微調函式 — 同樣只動「目前這一顆錨點」
+function nudgeRot(dx, dy, dz){
+  if(!isWallMode) return;
+  if(activeMarkerIndex === null) return;
+
+  const r = wallRotList[activeMarkerIndex];
+  r.x += dx;
+  r.y += dy;
+  r.z += dz;
+
+  const plane = planes[activeMarkerIndex];
+  plane.setAttribute('rotation', `${r.x} ${r.y} ${r.z}`);
+  updatePosLabel();
+}
+
+// 平移按鈕
 btnLeft .addEventListener('click', () => nudge(-0.1, 0));
 btnRight.addEventListener('click', () => nudge( 0.1, 0));
 btnUp   .addEventListener('click', () => nudge(0,  0.1));
 btnDown .addEventListener('click', () => nudge(0, -0.1));
+
+// 旋轉按鈕（你可以之後調整每次旋轉的度數）
+btnRotL     .addEventListener('click', () => nudgeRot(0, 0, -1)); // Z 軸逆時針 1°
+btnRotR     .addEventListener('click', () => nudgeRot(0, 0,  1)); // Z 軸順時針 1°
+btnTiltUp   .addEventListener('click', () => nudgeRot(-1, 0, 0)); // X 軸上傾 1°
+btnTiltDown .addEventListener('click', () => nudgeRot( 1, 0, 0)); // X 軸下傾 1°
 
 updatePosLabel();
 </script>
