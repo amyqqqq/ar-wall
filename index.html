@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜大牆對齊＋錄影版</title>
+<title>大牆 AR｜大牆對齊＋微調版</title>
 
-<!-- 官方 A-Frame + mind-ar -->
+<!-- 官方版本：A-Frame 1.6.0 + mind-ar 1.2.5 -->
 <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
@@ -54,8 +54,6 @@
   <button id="btnRight">➡</button>
   <button id="btnUp">⬆</button>
   <button id="btnDown">⬇</button>
-  <button id="btnRecStart">🔴 開始錄影</button>
-  <button id="btnRecStop" disabled>⏹ 停止</button>
   <span id="status">等待錨點…</span>
   <span id="posInfo"></span>
 </div>
@@ -98,24 +96,19 @@ const btnLeft  = document.getElementById('btnLeft');
 const btnRight = document.getElementById('btnRight');
 const btnUp    = document.getElementById('btnUp');
 const btnDown  = document.getElementById('btnDown');
-const btnRecStart = document.getElementById('btnRecStart');
-const btnRecStop  = document.getElementById('btnRecStop');
 const statusEl = document.getElementById('status');
 const posInfo  = document.getElementById('posInfo');
 
-let hasFound   = false;
+let hasFound = false;
 let isWallMode = false;
 
-// 牆實際尺寸（公尺）
+// 牆的實際尺寸（公尺）
 const WALL_W = 15.14;
 const WALL_H = 3.283;
 
-// 估計錨點在整面牆中偏左 ≈ 6.2m（牆中心為 0，往右為 +X）
+// 估計錨點在整面牆中偏左 ≈ 6.2m
+// （牆中心當 0，往右為 +X）
 let wallPos = { x: 6.2, y: 0, z: 0 };
-
-function updatePosLabel(){
-  posInfo.textContent = `pos x=${wallPos.x.toFixed(2)}m, y=${wallPos.y.toFixed(2)}m`;
-}
 
 // 手機互動一次給影片播放權限
 function tryPlay(){ v.play().catch(()=>{}); }
@@ -123,7 +116,11 @@ function tryPlay(){ v.play().catch(()=>{}); }
 window.addEventListener('pointerdown', tryPlay, {once:true});
 window.addEventListener('touchstart', tryPlay, {once:true, passive:true});
 
-// 錨點事件
+function updatePosLabel(){
+  posInfo.textContent = `pos x=${wallPos.x.toFixed(2)}m, y=${wallPos.y.toFixed(2)}m`;
+}
+
+/* 錨點事件 */
 marker.addEventListener('targetFound', () => {
   console.log('🎯 targetFound');
   statusEl.textContent = '已鎖定錨點，可切到大牆';
@@ -147,12 +144,12 @@ btnWall.addEventListener('click', () => {
   plane.setAttribute('position', `${wallPos.x} ${wallPos.y} ${wallPos.z}`);
 
   isWallMode = true;
-  statusEl.textContent = '大牆模式：可用箭頭微調位置（錄影也會錄進去）';
+  statusEl.textContent = '大牆模式：可用箭頭微調位置';
   updatePosLabel();
   v.play().catch(()=>{});
 });
 
-// 微調（左右上下）
+// 微調函式（左右上下）
 function nudge(dx, dy){
   if(!isWallMode) return;
   wallPos.x += dx;
@@ -167,77 +164,6 @@ btnUp   .addEventListener('click', () => nudge(0,  0.1));
 btnDown .addEventListener('click', () => nudge(0, -0.1));
 
 updatePosLabel();
-
-/* ========= 錄影功能：MediaRecorder + canvas.captureStream ========= */
-
-let canvas = null;
-let mediaRecorder = null;
-let recordedChunks = [];
-
-// 等 a-scene 載入後，取得 WebGL canvas
-const scene = document.querySelector('a-scene');
-scene.addEventListener('loaded', () => {
-  canvas = scene.canvas || document.querySelector('canvas.a-canvas');
-  console.log('🎥 canvas ready for capture', canvas);
-});
-
-function setRecButtonState(isRecording){
-  btnRecStart.disabled = isRecording;
-  btnRecStop.disabled  = !isRecording;
-}
-
-// 開始錄影
-btnRecStart.addEventListener('click', () => {
-  if(!canvas){
-    alert('暫時找不到畫面來源，請稍候幾秒再試一次。');
-    return;
-  }
-  if(typeof MediaRecorder === 'undefined'){
-    alert('此裝置或瀏覽器不支援錄影（MediaRecorder）。\n可以改用手機內建螢幕錄影。');
-    return;
-  }
-
-  try{
-    const stream = canvas.captureStream(30); // 30fps
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream); // 讓瀏覽器自選 codec
-
-    mediaRecorder.ondataavailable = e => {
-      if(e.data && e.data.size > 0) recordedChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, {type:'video/webm'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'ar-record.webm';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      recordedChunks = [];
-      setRecButtonState(false);
-      statusEl.textContent = '錄影已儲存（ar-record.webm）';
-    };
-
-    mediaRecorder.start();
-    setRecButtonState(true);
-    statusEl.textContent = '錄影中… 再按「停止」結束並下載檔案';
-    console.log('🎥 recording started');
-  }catch(err){
-    console.error(err);
-    alert('無法開始錄影：' + err.message);
-  }
-});
-
-// 停止錄影
-btnRecStop.addEventListener('click', () => {
-  if(mediaRecorder && mediaRecorder.state === 'recording'){
-    mediaRecorder.stop();
-    console.log('🎥 recording stopped');
-  }
-});
 </script>
 </body>
 </html>
