@@ -11,42 +11,76 @@
 
 <style>
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:#000;color:#0f0;font-family:monospace}
-  body{position:fixed; inset:0; overflow:hidden}
+  html,body{
+    margin:0;
+    height:100%;
+    background:#000;
+    color:#0f0;
+    font-family:monospace;
+  }
+  body{position:fixed; inset:0; overflow:hidden;}
 
   #top{
-    position:fixed;left:8px;top:8px;z-index:100003;
-    display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+    position:fixed;
+    left:8px;
+    top:8px;
+    z-index:100003;
+    display:flex;
+    gap:6px;
+    align-items:center;
+    flex-wrap:wrap;
   }
   #top button{padding:6px 10px;font-size:13px}
   #status{background:#000a;padding:4px 8px;border-radius:6px}
   #log{
-    position:fixed;left:8px;bottom:8px;right:8px;height:120px;
-    overflow:auto;background:rgba(0,0,0,.55);padding:8px;
-    z-index:100003;font-size:11px;line-height:1.25;
+    position:fixed;
+    left:8px;
+    bottom:8px;
+    right:8px;
+    height:120px;
+    overflow:auto;
+    background:rgba(0,0,0,.55);
+    padding:8px;
+    z-index:100003;
+    font-size:11px;
+    line-height:1.25;
   }
   #tfBadge{
-    position:fixed;right:12px;top:40px;z-index:100003;
-    background:#29b6f6;color:#000;padding:6px 10px;
-    border-radius:8px;display:none;font-weight:bold;
+    position:fixed;
+    right:12px;
+    top:40px;
+    z-index:100003;
+    background:#29b6f6;
+    color:#000;
+    padding:6px 10px;
+    border-radius:8px;
+    display:none;
+    font-weight:bold;
   }
 
   .mindar-container{
-  position:fixed !important;
-  inset:0 !important;
-  width:100vw !important;
-  height:100vh !important;
-  overflow:hidden !important;
-  touch-action:none !important;
-}
-
-  .mindar-container video, .mindar-container canvas{
-    position:absolute !important; left:0 !important; top:0 !important;
-    width:100% !important; height:100% !important;
+    position:fixed !important;
+    inset:0 !important;
+    width:100vw !important;
+    height:100vh !important;
+    overflow:hidden !important;
+    touch-action:none !important;
   }
-  .mindar-container video{object-fit:fill !important; transform:none !important}
+  .mindar-container video,
+  .mindar-container canvas{
+    position:absolute !important;
+    left:0 !important;
+    top:0 !important;
+    width:100% !important;
+    height:100% !important;
+  }
+  .mindar-container video{
+    object-fit:fill !important;
+    transform:none !important;
+  }
 
-  .mindar-ui-loading,.mindar-ui-scanning{display:none !important;}
+  .mindar-ui-loading,
+  .mindar-ui-scanning{display:none !important;}
 </style>
 </head>
 <body>
@@ -68,7 +102,8 @@
   renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true">
 
   <a-assets timeout="30000">
-    <video id="vid" src="./video.mp4" preload="auto" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+    <video id="vid" src="./video.mp4" preload="auto"
+      playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
 
   <!-- 錨點 entity -->
@@ -84,11 +119,14 @@
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"></a-plane>
   </a-entity>
 
-  <!-- ★ 獨立 debug 平面：一開始 hidden，按按鈕顯示在鏡頭正前方 -->
-  <a-plane id="debugPlane" position="0 0 -2" width="1" height="0.5"
-    material="color:#ff00ff; side:double" visible="false"></a-plane>
+  <!-- ★ camera + debug 平面（一定跟著畫面走） -->
+  <a-entity id="camRig" camera="facingMode: environment">
+    <a-plane id="debugPlane" position="0 0 -1"
+      width="4" height="2"
+      material="color:#ff00ff; opacity:0.8; side:double"
+      visible="false"></a-plane>
+  </a-entity>
 
-  <a-entity camera="facingMode: environment"></a-entity>
 </a-scene>
 
 <script>
@@ -119,8 +157,10 @@ function lockMindARContainer(){
   c.style.overflow='hidden';
   c.querySelectorAll('video,canvas').forEach(el=>{
     el.style.position='absolute';
-    el.style.left='0'; el.style.top='0';
-    el.style.width='100%'; el.style.height='100%';
+    el.style.left='0';
+    el.style.top='0';
+    el.style.width='100%';
+    el.style.height='100%';
   });
 }
 
@@ -133,12 +173,17 @@ document.getElementById('btnStart').onclick=async()=>{
   try{
     statusEl.textContent='請授權相機…';
     if(!navigator.mediaDevices?.getUserMedia) throw new Error('無法取用相機');
-    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    const s=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'}},
+      audio:false
+    });
     s.getTracks().forEach(t=>t.stop());
 
     statusEl.textContent='啟動中…';
-    if(!scene.hasLoaded) await new Promise(r=>scene.addEventListener('loaded',r,{once:true}));
-    const arSystem=scene.systems['mindar-image-system']||scene.systems['mindar-image'];
+    if(!scene.hasLoaded){
+      await new Promise(r=>scene.addEventListener('loaded',r,{once:true}));
+    }
+    const arSystem=scene.systems['mindar-image-system'] || scene.systems['mindar-image'];
 
     scene.addEventListener('arReady',()=>log('✅ arReady'),{once:true});
     scene.addEventListener('arError',e=>log('🟥 arError: '+e.detail));
@@ -160,10 +205,10 @@ document.getElementById('btnForcePlay').onclick=()=>{
   v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));
 };
 
-/* 顯示 debug 平面：跟錨點完全無關，只測 3D 畫面是否正常 */
+/* 顯示 debug 平面：一定在畫面正中央 */
 btnShowTest.onclick=()=>{
   debugPlane.setAttribute('visible','true');
-  log('🧪 已顯示 debug 平面（正前方 2m，一塊桃紅色長方形）。');
+  log('🧪 已顯示 debug 平面（正中央一大片桃紅色）。');
 };
 
 marker.addEventListener('targetFound',()=>{
