@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜大牆對齊＋微調版</title>
+<title>大牆 AR｜大牆對齊＋微調版（4 錨點）</title>
 
 <!-- 官方版本：A-Frame 1.6.0 + mind-ar 1.2.5 -->
 <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
@@ -59,7 +59,7 @@
 </div>
 
 <a-scene
-  mindar-image="imageTargetSrc: ./wall-anchor.mind?v=20251113; autoStart: true"
+  mindar-image="imageTargetSrc: ./wall-anchor.mind?v=20251113; autoStart: true; missTolerance: 15"
   color-space="sRGB"
   renderer="colorManagement: true; physicallyCorrectLights: true"
   vr-mode-ui="enabled: false"
@@ -76,9 +76,34 @@
   <!-- camera -->
   <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-  <!-- marker：同一塊 plane，先小後大 -->
-  <a-entity id="marker" mindar-image-target="targetIndex:0">
-    <a-plane id="plane"
+  <!-- 4 個錨點：targetIndex 0~3，都掛同一支影片 -->
+  <!-- 小尺寸先對齊，按「切到大牆」之後才放大成整面牆 -->
+  <a-entity id="marker0" class="marker" mindar-image-target="targetIndex: 0">
+    <a-plane class="wall-plane"
+      position="0 0 0"
+      width="0.8" height="0.4"
+      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
+    </a-plane>
+  </a-entity>
+
+  <a-entity id="marker1" class="marker" mindar-image-target="targetIndex: 1">
+    <a-plane class="wall-plane"
+      position="0 0 0"
+      width="0.8" height="0.4"
+      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
+    </a-plane>
+  </a-entity>
+
+  <a-entity id="marker2" class="marker" mindar-image-target="targetIndex: 2">
+    <a-plane class="wall-plane"
+      position="0 0 0"
+      width="0.8" height="0.4"
+      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
+    </a-plane>
+  </a-entity>
+
+  <a-entity id="marker3" class="marker" mindar-image-target="targetIndex: 3">
+    <a-plane class="wall-plane"
       position="0 0 0"
       width="0.8" height="0.4"
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
@@ -89,8 +114,6 @@
 
 <script>
 const v        = document.getElementById('vid');
-const marker   = document.getElementById('marker');
-const plane    = document.getElementById('plane');
 const btnWall  = document.getElementById('btnWall');
 const btnLeft  = document.getElementById('btnLeft');
 const btnRight = document.getElementById('btnRight');
@@ -99,16 +122,25 @@ const btnDown  = document.getElementById('btnDown');
 const statusEl = document.getElementById('status');
 const posInfo  = document.getElementById('posInfo');
 
-let hasFound = false;
+const markers = Array.from(document.querySelectorAll('.marker'));
+const planes  = Array.from(document.querySelectorAll('.wall-plane'));
+
+const NUM = markers.length;
+
 let isWallMode = false;
+let activeMarkerIndex = null; // 目前對到的那一顆錨點 index（0~3 或 null）
 
 // 牆的實際尺寸（公尺）
 const WALL_W = 15.14;
 const WALL_H = 3.283;
 
-// 估計錨點在整面牆中偏左 ≈ 6.2m
-// （牆中心當 0，往右為 +X）
-let wallPos = { x: 6.2, y: 0, z: 0 };
+// 每一顆錨點各自的「牆位置微調值」
+// 先全部給一樣的預估值，之後可以針對每顆錨點用箭頭慢慢調
+const wallPosList = Array.from({length: NUM}, () => ({
+  x: 6.2, // 這裡可以之後依照實際牆面一顆一顆改
+  y: 0,
+  z: 0
+}));
 
 // 手機互動一次給影片播放權限
 function tryPlay(){ v.play().catch(()=>{}); }
@@ -117,44 +149,81 @@ window.addEventListener('pointerdown', tryPlay, {once:true});
 window.addEventListener('touchstart', tryPlay, {once:true, passive:true});
 
 function updatePosLabel(){
-  posInfo.textContent = `pos x=${wallPos.x.toFixed(2)}m, y=${wallPos.y.toFixed(2)}m`;
+  if(activeMarkerIndex === null){
+    posInfo.textContent = '';
+    return;
+  }
+  const p = wallPosList[activeMarkerIndex];
+  posInfo.textContent = `錨點 #${activeMarkerIndex} pos x=${p.x.toFixed(2)}m, y=${p.y.toFixed(2)}m`;
 }
 
-/* 錨點事件 */
-marker.addEventListener('targetFound', () => {
-  console.log('🎯 targetFound');
-  statusEl.textContent = '已鎖定錨點，可切到大牆';
-  hasFound = true;
-  btnWall.disabled = false;
-  v.play().catch(()=>{});
+// 綁定每一顆錨點的事件
+markers.forEach((marker, idx) => {
+  const plane = planes[idx];
+
+  marker.addEventListener('targetFound', () => {
+    console.log('🎯 targetFound', idx);
+    activeMarkerIndex = idx;
+    btnWall.disabled = false;
+    statusEl.textContent = `已鎖定錨點 #${idx}，可切到大牆`;
+    v.play().catch(()=>{});
+
+    if(isWallMode){
+      // 大牆模式下：只顯示這顆錨點的 plane，其餘關掉
+      planes.forEach((p, i) => {
+        p.object3D.visible = (i === idx);
+      });
+      // 確保位置用目前的微調值
+      const p = wallPosList[idx];
+      plane.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
+    }
+  });
+
+  marker.addEventListener('targetLost', () => {
+    console.log('⚠ targetLost', idx);
+    statusEl.textContent = `錨點 #${idx} 遺失，請再對準任一錨點`;
+    plane.object3D.visible = false;
+
+    // 如果現在 active 就把 active 清掉（等下一顆錨點接力）
+    if(activeMarkerIndex === idx){
+      activeMarkerIndex = null;
+      updatePosLabel();
+    }
+  });
 });
 
-marker.addEventListener('targetLost', () => {
-  console.log('⚠ targetLost');
-  statusEl.textContent = '錨點遺失，請再對準';
-  hasFound = false;
-});
-
-// 切到大牆：放大同一塊 plane，並套用預估位置
+// 切到大牆：放大所有 plane，實際顯示只顯示「目前對到的那一顆」
 btnWall.addEventListener('click', () => {
-  if(!hasFound) return;
+  if(activeMarkerIndex === null) return;
 
-  plane.setAttribute('width',  WALL_W);
-  plane.setAttribute('height', WALL_H);
-  plane.setAttribute('position', `${wallPos.x} ${wallPos.y} ${wallPos.z}`);
+  planes.forEach((plane, idx) => {
+    plane.setAttribute('width',  WALL_W);
+    plane.setAttribute('height', WALL_H);
+
+    const p = wallPosList[idx];
+    plane.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
+
+    // 只顯示當前這一顆錨點的 plane
+    plane.object3D.visible = (idx === activeMarkerIndex);
+  });
 
   isWallMode = true;
-  statusEl.textContent = '大牆模式：可用箭頭微調位置';
+  statusEl.textContent = '大牆模式：可用箭頭微調位置（每顆錨點各自記錄）';
   updatePosLabel();
   v.play().catch(()=>{});
 });
 
-// 微調函式（左右上下）
+// 微調函式（左右上下）— 只動「目前這一顆錨點」的牆位置
 function nudge(dx, dy){
   if(!isWallMode) return;
-  wallPos.x += dx;
-  wallPos.y += dy;
-  plane.setAttribute('position', `${wallPos.x} ${wallPos.y} ${wallPos.z}`);
+  if(activeMarkerIndex === null) return;
+
+  const p = wallPosList[activeMarkerIndex];
+  p.x += dx;
+  p.y += dy;
+
+  const plane = planes[activeMarkerIndex];
+  plane.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
   updatePosLabel();
 }
 
