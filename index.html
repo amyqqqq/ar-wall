@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜錨點＋大牆示意版</title>
+<title>大牆 AR｜錨點＋大牆（放大同一塊平面）</title>
 
 <!-- 官方版本：A-Frame 1.6.0 + mind-ar 1.2.5 -->
 <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
@@ -18,7 +18,6 @@
     font-family:monospace;
   }
 
-  /* 簡單一條上方工具列 */
   #top{
     position:fixed;
     left:8px;
@@ -66,22 +65,11 @@
   <!-- camera -->
   <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-  <!-- marker：一開始掛一塊小平面在錨點上 -->
+  <!-- marker：只有這一塊平面，先小後大 -->
   <a-entity id="marker" mindar-image-target="targetIndex:0">
-    <!-- 小測試平面（確認 tracking OK 用） -->
-    <a-plane id="markerPlane"
+    <a-plane id="plane"
       position="0 0 0"
       width="0.8" height="0.4"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
-    </a-plane>
-  </a-entity>
-
-  <!-- 大牆平面：一開始不顯示，按鈕後才切過來 -->
-  <a-entity id="wallRoot" visible="false">
-    <a-plane id="wallPlane"
-      position="0 0 0"
-      width="3"  <!-- 先用 3 公尺示意，之後改 15.14 -->
-      height="3 * 3.283 / 15.14"
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
     </a-plane>
   </a-entity>
@@ -89,17 +77,15 @@
 </a-scene>
 
 <script>
-const v       = document.getElementById('vid');
-const marker  = document.getElementById('marker');
-const markerPlane = document.getElementById('markerPlane');
-const wallRoot   = document.getElementById('wallRoot');
-const wallPlane  = document.getElementById('wallPlane');
-const btnWall    = document.getElementById('btnWall');
-const statusEl   = document.getElementById('status');
+const v        = document.getElementById('vid');
+const marker   = document.getElementById('marker');
+const plane    = document.getElementById('plane');
+const btnWall  = document.getElementById('btnWall');
+const statusEl = document.getElementById('status');
 
 let hasFound = false;
 
-/* 手機要互動才能播一次影片 */
+/* 手機互動一次給影片播放權限 */
 function tryPlay(){ v.play().catch(()=>{}); }
 ['loadeddata','canplay'].forEach(ev => v.addEventListener(ev, tryPlay, {once:true}));
 window.addEventListener('pointerdown', tryPlay, {once:true});
@@ -118,26 +104,19 @@ marker.addEventListener('targetLost', () => {
   console.log('⚠ targetLost');
   statusEl.textContent = '錨點遺失，請再對準';
   hasFound = false;
-  // 先不 disabled 按鈕，方便你測試
 });
 
-/* 切到大牆：把大牆 entity 掛到 marker 底下，顯示它、隱藏小平面 */
+/* 切到大牆：直接把同一塊 plane 放大成牆尺寸 */
 btnWall.addEventListener('click', () => {
   if(!hasFound) return;
 
-  // 把 wallRoot 掛到 marker 底下，跟著錨點走
-  marker.appendChild(wallRoot);
-
-  // 這裡先用 3 公尺寬示意，比例照 15.14×3.283 設定
+  // 先用 3 公尺寬示意，比例照 15.14×3.283
   const wallWidth  = 3.0;
   const wallHeight = wallWidth * (3.283 / 15.14);
-  wallPlane.setAttribute('width',  wallWidth);
-  wallPlane.setAttribute('height', wallHeight);
-  wallRoot.setAttribute('position', '0 0 0');   // 可之後再微調 offset
-  wallRoot.setAttribute('visible', 'true');
 
-  // 把小 marker 平面關掉
-  markerPlane.setAttribute('visible', 'false');
+  plane.setAttribute('width',  wallWidth);
+  plane.setAttribute('height', wallHeight);
+  plane.setAttribute('position', '0 0 0'); // 之後可以微調 offset
 
   statusEl.textContent = '已切換到大牆（3m 示意版）';
   v.play().catch(()=>{});
