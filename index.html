@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜錨點＋大牆（放大同一塊平面）</title>
+<title>大牆 AR｜大牆對齊＋微調版</title>
 
 <!-- 官方版本：A-Frame 1.6.0 + mind-ar 1.2.5 -->
 <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
@@ -27,15 +27,21 @@
     gap:6px;
     align-items:center;
     padding:4px 6px;
-    background:rgba(0,0,0,.4);
+    background:rgba(0,0,0,.45);
     border-radius:8px;
+    flex-wrap:wrap;
   }
   #top button{
-    padding:4px 8px;
-    font-size:13px;
+    padding:3px 6px;
+    font-size:12px;
   }
   #status{
     font-size:12px;
+    opacity:.85;
+    min-width:140px;
+  }
+  #posInfo{
+    font-size:11px;
     opacity:.8;
   }
 </style>
@@ -44,7 +50,12 @@
 
 <div id="top">
   <button id="btnWall" disabled>切到大牆</button>
+  <button id="btnLeft">⬅</button>
+  <button id="btnRight">➡</button>
+  <button id="btnUp">⬆</button>
+  <button id="btnDown">⬇</button>
   <span id="status">等待錨點…</span>
+  <span id="posInfo"></span>
 </div>
 
 <a-scene
@@ -65,7 +76,7 @@
   <!-- camera -->
   <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-  <!-- marker：只有這一塊平面，先小後大 -->
+  <!-- marker：同一塊 plane，先小後大 -->
   <a-entity id="marker" mindar-image-target="targetIndex:0">
     <a-plane id="plane"
       position="0 0 0"
@@ -81,15 +92,33 @@ const v        = document.getElementById('vid');
 const marker   = document.getElementById('marker');
 const plane    = document.getElementById('plane');
 const btnWall  = document.getElementById('btnWall');
+const btnLeft  = document.getElementById('btnLeft');
+const btnRight = document.getElementById('btnRight');
+const btnUp    = document.getElementById('btnUp');
+const btnDown  = document.getElementById('btnDown');
 const statusEl = document.getElementById('status');
+const posInfo  = document.getElementById('posInfo');
 
 let hasFound = false;
+let isWallMode = false;
 
-/* 手機互動一次給影片播放權限 */
+// 牆的實際尺寸（公尺）
+const WALL_W = 15.14;
+const WALL_H = 3.283;
+
+// 估計錨點在整面牆中偏左 ≈ 6.2m
+// （牆中心當 0，往右為 +X）
+let wallPos = { x: 6.2, y: 0, z: 0 };
+
+// 手機互動一次給影片播放權限
 function tryPlay(){ v.play().catch(()=>{}); }
 ['loadeddata','canplay'].forEach(ev => v.addEventListener(ev, tryPlay, {once:true}));
 window.addEventListener('pointerdown', tryPlay, {once:true});
 window.addEventListener('touchstart', tryPlay, {once:true, passive:true});
+
+function updatePosLabel(){
+  posInfo.textContent = `pos x=${wallPos.x.toFixed(2)}m, y=${wallPos.y.toFixed(2)}m`;
+}
 
 /* 錨點事件 */
 marker.addEventListener('targetFound', () => {
@@ -106,21 +135,35 @@ marker.addEventListener('targetLost', () => {
   hasFound = false;
 });
 
-/* 切到大牆：直接把同一塊 plane 放大成牆尺寸 */
+// 切到大牆：放大同一塊 plane，並套用預估位置
 btnWall.addEventListener('click', () => {
   if(!hasFound) return;
 
-  // 先用 3 公尺寬示意，比例照 15.14×3.283
-  const wallWidth  = 3.0;
-  const wallHeight = wallWidth * (3.283 / 15.14);
+  plane.setAttribute('width',  WALL_W);
+  plane.setAttribute('height', WALL_H);
+  plane.setAttribute('position', `${wallPos.x} ${wallPos.y} ${wallPos.z}`);
 
-  plane.setAttribute('width',  wallWidth);
-  plane.setAttribute('height', wallHeight);
-  plane.setAttribute('position', '0 0 0'); // 之後可以微調 offset
-
-  statusEl.textContent = '已切換到大牆（3m 示意版）';
+  isWallMode = true;
+  statusEl.textContent = '大牆模式：可用箭頭微調位置';
+  updatePosLabel();
   v.play().catch(()=>{});
 });
+
+// 微調函式（左右上下）
+function nudge(dx, dy){
+  if(!isWallMode) return;
+  wallPos.x += dx;
+  wallPos.y += dy;
+  plane.setAttribute('position', `${wallPos.x} ${wallPos.y} ${wallPos.z}`);
+  updatePosLabel();
+}
+
+btnLeft .addEventListener('click', () => nudge(-0.1, 0));
+btnRight.addEventListener('click', () => nudge( 0.1, 0));
+btnUp   .addEventListener('click', () => nudge(0,  0.1));
+btnDown .addEventListener('click', () => nudge(0, -0.1));
+
+updatePosLabel();
 </script>
 </body>
 </html>
