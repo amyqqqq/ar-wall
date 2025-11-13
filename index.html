@@ -32,10 +32,14 @@
   }
 
   .mindar-container{
-    position:fixed !important; inset:0 !important;
-    width:100vw !important; height:100vh !important;
-    overflow:hidden !important; touch-action:none !important;
-  }
+  position:fixed !important;
+  inset:0 !important;
+  width:100vw !important;
+  height:100vh !important;
+  overflow:hidden !important;
+  touch-action:none !important;
+}
+
   .mindar-container video, .mindar-container canvas{
     position:absolute !important; left:0 !important; top:0 !important;
     width:100% !important; height:100% !important;
@@ -67,19 +71,22 @@
     <video id="vid" src="./video.mp4" preload="auto" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
 
-  <!-- 目標錨點 -->
+  <!-- 錨點 entity -->
   <a-entity id="marker" mindar-image-target="targetIndex:0">
-    <!-- 貼在錨點上的小測試平面 -->
     <a-plane id="testOnMarker" position="0 0 0.01" width="0.6" height="0.13"
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"
       visible="false"></a-plane>
   </a-entity>
 
-  <!-- 大牆平面（之後再用按鈕切過去） -->
+  <!-- 大牆平面 -->
   <a-entity id="wallPlane" visible="false">
     <a-plane id="wallVideo" width="15.14" height="3.283" position="0 0 0"
       material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01"></a-plane>
   </a-entity>
+
+  <!-- ★ 獨立 debug 平面：一開始 hidden，按按鈕顯示在鏡頭正前方 -->
+  <a-plane id="debugPlane" position="0 0 -2" width="1" height="0.5"
+    material="color:#ff00ff; side:double" visible="false"></a-plane>
 
   <a-entity camera="facingMode: environment"></a-entity>
 </a-scene>
@@ -98,6 +105,7 @@ const tfBadge=document.getElementById('tfBadge');
 const btnWall=document.getElementById('btnWall');
 const btnShowTest=document.getElementById('btnShowTest');
 const testOnMarker=document.getElementById('testOnMarker');
+const debugPlane=document.getElementById('debugPlane');
 
 let found=false;
 
@@ -152,12 +160,10 @@ document.getElementById('btnForcePlay').onclick=()=>{
   v.play().then(()=>log('▶️ 手動播放成功')).catch(e=>log('🟥 '+e.message));
 };
 
-/* 按鈕：不管有沒有 targetFound，直接把測試平面打開 */
+/* 顯示 debug 平面：跟錨點完全無關，只測 3D 畫面是否正常 */
 btnShowTest.onclick=()=>{
-  testOnMarker.setAttribute('visible','true');
-  testOnMarker.setAttribute('position','0 0 -2'); // 推到鏡頭前面
-  v.play().catch(()=>{});
-  log('🧪 已顯示測試平面（正前方 -2m），確認影片紋理 OK。');
+  debugPlane.setAttribute('visible','true');
+  log('🧪 已顯示 debug 平面（正前方 2m，一塊桃紅色長方形）。');
 };
 
 marker.addEventListener('targetFound',()=>{
@@ -165,7 +171,7 @@ marker.addEventListener('targetFound',()=>{
   log('🎯 targetFound（有抓到錨點影像）');
   found=true;
   testOnMarker.setAttribute('visible','true');
-  testOnMarker.setAttribute('position','0 0 0.01'); // 貼回錨點上
+  testOnMarker.setAttribute('position','0 0 0.01');
   v.play().catch(()=>{});
   btnWall.disabled=false;
 });
