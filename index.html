@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜官方極簡錨點測試（含相機畫面）</title>
+<title>大牆 AR｜官方極簡錨點測試（相機正常版）</title>
 
 <!-- A-Frame + mind-ar 官方版本 -->
 <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
@@ -19,25 +19,13 @@
     font-family:monospace;
   }
 
-  /* 讓 MindAR 容器鋪滿畫面 */
+  /* 只負責讓 mindar-container 填滿螢幕，不去動 canvas 本身 */
   .mindar-container{
     position:fixed !important;
     inset:0 !important;
     width:100vw !important;
     height:100vh !important;
     overflow:hidden !important;
-  }
-  .mindar-container video,
-  .mindar-container canvas{
-    position:absolute !important;
-    left:0 !important;
-    top:0 !important;
-    width:100% !important;
-    height:100% !important;
-  }
-  /* 最關鍵：canvas 要透明，才看得到底下的相機影片 */
-  .a-canvas{
-    background:transparent !important;
   }
 
   #tfBadge{
@@ -74,7 +62,7 @@
 <a-scene
   mindar-image="imageTargetSrc: ./wall-anchor.mind?v=20251113;"
   color-space="sRGB"
-  renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
+  renderer="colorManagement: true; physicallyCorrectLights: true"
   vr-mode-ui="enabled: false"
   device-orientation-permission-ui="enabled: false">
 
@@ -86,10 +74,8 @@
            crossorigin="anonymous"></video>
   </a-assets>
 
-  <!-- 相機 -->
   <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-  <!-- 錨點 -->
   <a-entity id="marker" mindar-image-target="targetIndex:0">
     <a-plane id="plane"
       position="0 0 0"
@@ -108,7 +94,7 @@ const v = document.getElementById('vid');
 const marker = document.getElementById('marker');
 const badge = document.getElementById('tfBadge');
 
-/* iOS 需要互動才能播影片 */
+/* 行動裝置互動一次才能播影片 */
 function tryPlay(){ v.play().catch(()=>{}); }
 ['loadeddata','canplay'].forEach(ev => v.addEventListener(ev, tryPlay, {once:true}));
 window.addEventListener('pointerdown', tryPlay, {once:true});
