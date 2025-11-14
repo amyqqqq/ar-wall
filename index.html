@@ -165,23 +165,28 @@ const WALL_W = 15.14;
 const WALL_H = 3.283;
 
 // 每一顆錨點各自的「牆位置微調值」
-const wallPosList = Array.from({length: NUM}, () => ({
-  x: 6.2, // 這裡可以之後依照實際牆面一顆一顆改
-  y: 0,
-  z: 0
-}));
+const wallPosList = [
+  { x: 3.10, y: 0.00, z: 0 }, // 錨點 0
+  { x: 1.4, y: 0.0, z: 0 }, // 錨點 1
+  { x: 0.00, y: 0.00, z: 0 }, // 錨點 2
+  { x: -3.40, y: 0.00, z: 0 }  // 錨點 3
+];
 
 // 每一顆錨點各自的「牆旋轉微調值」（角度，度數）
-const wallRotList = Array.from({length: NUM}, () => ({
-  x: 0, // 上下傾斜（pitch）
-  y: 0, // 左右偏轉（yaw）
-  z: 0  // 平面內旋轉（roll）
-}));
+const wallRotList = [
+  { x: 0, y: 0, z: 0 }, // 錨點 0
+  { x: 0, y: 0, z: 0 }, // 錨點 1
+  { x: 1.0, y: 0, z: 0 }, // 錨點 2
+  { x: 0, y: 0, z: 0 }  // 錨點 3
+];
 
 // 每一顆錨點各自的縮放倍率
-const wallScaleList = Array.from({length: NUM}, () => ({
-  s: 1.0 // 預設 1.0
-}));
+const wallScaleList = [
+  { s: 0.60 }, // 錨點 0
+  { s: 0.60 }, // 錨點 1
+  { s: 0.6 }, // 錨點 2
+  { s: 0.6 }  // 錨點 3
+];
 
 // 手機互動一次給影片播放權限
 function tryPlay(){ v.play().catch(()=>{}); }
