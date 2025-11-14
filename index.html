@@ -1,30 +1,10 @@
 <script>
-const v        = document.getElementById('vid');
-const btnWall  = document.getElementById('btnWall');
-const btnLeft  = document.getElementById('btnLeft');
-const btnRight = document.getElementById('btnRight');
-const btnUp    = document.getElementById('btnUp');
-const btnDown  = document.getElementById('btnDown');
+// 影片
+const v = document.getElementById('vid');
 
-// 旋轉按鈕
-const btnRotL     = document.getElementById('btnRotL');
-const btnRotR     = document.getElementById('btnRotR');
-const btnTiltUp   = document.getElementById('btnTiltUp');
-const btnTiltDown = document.getElementById('btnTiltDown');
-
-// 縮放按鈕
-const btnScaleUp   = document.getElementById('btnScaleUp');
-const btnScaleDown = document.getElementById('btnScaleDown');
-
-const statusEl = document.getElementById('status');
-const posInfo  = document.getElementById('posInfo');
-
+// MindAR 的 marker & 對應的 plane
 const markers = Array.from(document.querySelectorAll('.marker'));
 const planes  = Array.from(document.querySelectorAll('.wall-plane'));
-
-let isWallMode = false;
-// 👉 同一時間只允許一顆錨點當主角
-let activeMarkerIndex = null;
 
 // 牆的實際尺寸（公尺）
 const WALL_W = 15.14;
@@ -54,20 +34,21 @@ const wallScaleList = [
   { s: 0.60 }  // 錨點 3
 ];
 
+// 同一時間只允許一顆錨點當主角
+let activeMarkerIndex = null;
+
 // 手機互動一次給影片播放權限
 function tryPlay(){ v.play().catch(()=>{}); }
 ['loadeddata','canplay'].forEach(ev => v.addEventListener(ev, tryPlay, {once:true}));
 window.addEventListener('pointerdown', tryPlay, {once:true});
 window.addEventListener('touchstart', tryPlay, {once:true, passive:true});
 
-// 影片正播 ↔ 反向「手動倒帶」 ping-pong 循環
+// --------- 影片 ping-pong（要的話保留，不要可以整段刪掉） ---------
 let pingpongDirection = 1;   // 1 = 正播, -1 = 反向倒帶
 let reverseTimer = null;
 
-// 一開始先正播
 v.playbackRate = 1;
 
-// 正常往前播到底 → 改成反向「倒帶」
 v.addEventListener('ended', () => {
   startReverse();
 });
@@ -93,49 +74,38 @@ function startReverse(){
   v.pause();
 
   if (!isFinite(v.duration) || v.duration === 0){
-    return; // 避免影片還沒準備好
+    return;
   }
 
   if (v.currentTime >= v.duration){
     v.currentTime = v.duration - 0.03;
   }
 
-  const step = 1/30; // 每次倒帶 1/30 秒，大概 30fps
+  const step = 1/30;
   reverseTimer = setInterval(() => {
     if (v.currentTime <= 0.03){
-      // 倒帶回到開頭 → 再正播
       clearInterval(reverseTimer);
       reverseTimer = null;
       startForward();
     } else {
       v.currentTime = Math.max(0, v.currentTime - step);
     }
-  }, 33); // 每 33ms 更新一次（約 30fps）
+  }, 33);
 }
-
-function updatePosLabel(){
-  if(activeMarkerIndex === null){
-    posInfo.textContent = '';
-    return;
-  }
-  const p = wallPosList[activeMarkerIndex];
-  const r = wallRotList[activeMarkerIndex];
-  const s = wallScaleList[activeMarkerIndex];
-  posInfo.textContent =
-    `錨點 #${activeMarkerIndex} ` +
-    `pos x=${p.x.toFixed(2)} y=${p.y.toFixed(2)} ` +
-    `| rot x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} z=${r.z.toFixed(1)} ` +
-    `| scale=${s.s.toFixed(2)}`;
-}
+// ------------------------------------------------------------
 
 // 綁定每一顆錨點的事件
 markers.forEach((marker, idx) => {
   const plane = planes[idx];
 
+  // 先把 plane 設成大牆尺寸
+  plane.setAttribute('width',  WALL_W);
+  plane.setAttribute('height', WALL_H);
+
   marker.addEventListener('targetFound', () => {
     console.log('🎯 targetFound', idx);
 
-    // ⭐ 核心：如果已經有一顆在用，而且不是這一顆 → 直接忽略
+    // 如果已經有一顆在用，而且不是這一顆 → 忽略
     if (activeMarkerIndex !== null && activeMarkerIndex !== idx) {
       console.log('🔒 已有活動錨點 #'+activeMarkerIndex+'，忽略 #'+idx);
       return;
@@ -147,132 +117,29 @@ markers.forEach((marker, idx) => {
       console.log('✅ 設定活動錨點 #'+idx);
     }
 
-    btnWall.disabled = false;
-    statusEl.textContent = `已抓到錨點 #${activeMarkerIndex}，可切到大牆`;
-    v.play().catch(()=>{});
+    // 只顯示這顆的 plane
+    planes.forEach((p, i) => {
+      p.object3D.visible = (i === activeMarkerIndex);
+    });
 
-    // 確保 plane 顯示
-    plane.object3D.visible = true;
-
-    if(isWallMode){
-      // 大牆模式下：只顯示這顆錨點的 plane，其餘關掉
-      planes.forEach((p, i) => {
-        p.object3D.visible = (i === activeMarkerIndex);
-      });
-
-      const pPos   = wallPosList[activeMarkerIndex];
-      const pRot   = wallRotList[activeMarkerIndex];
-      const pScale = wallScaleList[activeMarkerIndex].s;
-
-      plane.setAttribute('position', `${pPos.x} ${pPos.y} ${pPos.z}`);
-      plane.setAttribute('rotation', `${pRot.x} ${pRot.y} ${pRot.z}`);
-      plane.object3D.scale.set(pScale, pScale, pScale);
-    }
-
-    updatePosLabel();
-  });
-
-  marker.addEventListener('targetLost', () => {
-    console.log('⚠ targetLost', idx);
-
-    // 如果這顆不是正在用的那一顆 → 忽略
-    if (activeMarkerIndex !== idx) {
-      console.log('忽略非活動錨點 targetLost #'+idx);
-      return;
-    }
-
-    statusEl.textContent = `錨點 #${idx} 遺失，請對準任一錨點`;
-    plane.object3D.visible = false;
-
-    // 把「活動錨點」清掉，讓下一顆可以接手
-    activeMarkerIndex = null;
-    updatePosLabel();
-  });
-});
-
-// 切到大牆：放大所有 plane，實際顯示只顯示「目前活動的那一顆」
-btnWall.addEventListener('click', () => {
-  if(activeMarkerIndex === null) return;
-
-  planes.forEach((plane, idx) => {
-    plane.setAttribute('width',  WALL_W);
-    plane.setAttribute('height', WALL_H);
-
-    const pPos   = wallPosList[idx];
-    const pRot   = wallRotList[idx];
-    const pScale = wallScaleList[idx].s;
+    const pPos   = wallPosList[activeMarkerIndex];
+    const pRot   = wallRotList[activeMarkerIndex];
+    const pScale = wallScaleList[activeMarkerIndex].s;
 
     plane.setAttribute('position', `${pPos.x} ${pPos.y} ${pPos.z}`);
     plane.setAttribute('rotation', `${pRot.x} ${pRot.y} ${pRot.z}`);
     plane.object3D.scale.set(pScale, pScale, pScale);
 
-    // 只顯示活動錨點的 plane
-    plane.object3D.visible = (idx === activeMarkerIndex);
+    v.play().catch(()=>{});
   });
 
-  isWallMode = true;
-  statusEl.textContent = '大牆模式：可用箭頭微調位置＋旋轉＋縮放（每顆錨點各自記錄）';
-  updatePosLabel();
-  v.play().catch(()=>{});
+  marker.addEventListener('targetLost', () => {
+    console.log('⚠ targetLost', idx);
+
+    if (activeMarkerIndex !== idx) return;
+
+    plane.object3D.visible = false;
+    activeMarkerIndex = null;
+  });
 });
-
-// 平移微調（只動目前活動錨點）
-function nudge(dx, dy){
-  if(!isWallMode) return;
-  if(activeMarkerIndex === null) return;
-
-  const p = wallPosList[activeMarkerIndex];
-  p.x += dx;
-  p.y += dy;
-
-  const plane = planes[activeMarkerIndex];
-  plane.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
-  updatePosLabel();
-}
-
-// 旋轉微調
-function nudgeRot(dx, dy, dz){
-  if(!isWallMode) return;
-  if(activeMarkerIndex === null) return;
-
-  const r = wallRotList[activeMarkerIndex];
-  r.x += dx;
-  r.y += dy;
-  r.z += dz;
-
-  const plane = planes[activeMarkerIndex];
-  plane.setAttribute('rotation', `${r.x} ${r.y} ${r.z}`);
-  updatePosLabel();
-}
-
-// 縮放微調
-function nudgeScale(ds){
-  if(!isWallMode) return;
-  if(activeMarkerIndex === null) return;
-
-  const s = wallScaleList[activeMarkerIndex];
-  s.s = Math.max(0.01, s.s + ds);
-
-  const plane = planes[activeMarkerIndex];
-  plane.object3D.scale.set(s.s, s.s, s.s);
-  updatePosLabel();
-}
-
-// 平移按鈕
-btnLeft .addEventListener('click', () => nudge(-0.1, 0));
-btnRight.addEventListener('click', () => nudge( 0.1, 0));
-btnUp   .addEventListener('click', () => nudge(0,  0.1));
-btnDown .addEventListener('click', () => nudge(0, -0.1));
-
-// 旋轉按鈕
-btnRotL     .addEventListener('click', () => nudgeRot(0, 0, -1)); // Z 軸逆時針 1°
-btnRotR     .addEventListener('click', () => nudgeRot(0, 0,  1)); // Z 軸順時針 1°
-btnTiltUp   .addEventListener('click', () => nudgeRot(-1, 0, 0)); // X 軸上傾 1°
-btnTiltDown .addEventListener('click', () => nudgeRot( 1, 0, 0)); // X 軸下傾 1°
-
-// 縮放按鈕（每次 0.1 倍）
-btnScaleUp  .addEventListener('click', () => nudgeScale( 0.1));
-btnScaleDown.addEventListener('click', () => nudgeScale(-0.1));
-
-updatePosLabel();
 </script>
