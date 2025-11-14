@@ -176,6 +176,19 @@ function startReverse(){
   }, 33); // 每 33ms 更新一次（約 30fps）
 }
 
+// 🔁 每次重新抓到錨點時，從頭開始播放（並回到正播模式）
+function restartVideoFromStart(){
+  if (reverseTimer){
+    clearInterval(reverseTimer);
+    reverseTimer = null;
+  }
+  pingpongDirection = 1;
+  v.pause();
+  v.currentTime = 0.01;   // 從頭一點點，避免卡在 0
+  v.playbackRate = 1;
+  v.play().catch(()=>{});
+}
+
 // 綁定每一顆錨點的事件
 markers.forEach((marker, idx) => {
   const plane = planes[idx];
@@ -183,7 +196,10 @@ markers.forEach((marker, idx) => {
   marker.addEventListener('targetFound', () => {
     console.log('🎯 targetFound', idx);
 
-    // ⭐ 核心：如果已經有一顆在用，而且不是這一顆 → 直接忽略
+    // 判斷這次是不是「從沒有錨點 → 新抓到」的狀態
+    const isNewLock = (activeMarkerIndex === null);
+
+    // ⭐ 如果已經有一顆在用，而且不是這一顆 → 直接忽略
     if (activeMarkerIndex !== null && activeMarkerIndex !== idx) {
       console.log('🔒 已有活動錨點 #'+activeMarkerIndex+'，忽略 #'+idx);
       return;
@@ -212,7 +228,10 @@ markers.forEach((marker, idx) => {
       p.object3D.visible = (i === idx);
     });
 
-    v.play().catch(()=>{});
+    // ✅ 每次「重新抓到第一顆錨點」時，影片從頭開始
+    if (isNewLock){
+      restartVideoFromStart();
+    }
   });
 
   marker.addEventListener('targetLost', () => {
@@ -225,6 +244,13 @@ markers.forEach((marker, idx) => {
     }
 
     plane.object3D.visible = false;
+
+    // 掉錨時：停掉影片 & 清倒帶 timer
+    if (reverseTimer){
+      clearInterval(reverseTimer);
+      reverseTimer = null;
+    }
+    v.pause();
 
     // 把「活動錨點」清掉，讓下一顆可以接手
     activeMarkerIndex = null;
