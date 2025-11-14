@@ -1,136 +1,3 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-<title>大牆 AR｜大牆對齊＋微調版（4 錨點）</title>
-
-<!-- 官方版本：A-Frame 1.6.0 + mind-ar 1.2.5 -->
-<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-
-<style>
-  body{
-    margin:0;
-    overflow:hidden;
-    background:#000;
-    color:#0f0;
-    font-family:monospace;
-  }
-
-  #top{
-    position:fixed;
-    left:8px;
-    top:8px;
-    z-index:10;
-    display:flex;
-    gap:6px;
-    align-items:center;
-    padding:4px 6px;
-    background:rgba(0,0,0,.45);
-    border-radius:8px;
-    flex-wrap:wrap;
-  }
-  #top button{
-    padding:3px 6px;
-    font-size:12px;
-  }
-  #status{
-    font-size:12px;
-    opacity:.85;
-    min-width:140px;
-  }
-  #posInfo{
-    font-size:11px;
-    opacity:.8;
-  }
-</style>
-<style>
-  a-enter-vr-button, .a-enter-vr-button {
-    display: none !important;
-  }
-</style>
-
-</head>
-<body>
-
-<div id="top">
-  <button id="btnWall" disabled>切到大牆</button>
-
-  <!-- 平移 -->
-  <button id="btnLeft">⬅</button>
-  <button id="btnRight">➡</button>
-  <button id="btnUp">⬆</button>
-  <button id="btnDown">⬇</button>
-
-  <!-- 旋轉微調 -->
-  <button id="btnRotL">⤿</button>
-  <button id="btnRotR">⤾</button>
-  <button id="btnTiltUp">↰</button>
-  <button id="btnTiltDown">↱</button>
-
-  <!-- 縮放微調 -->
-  <button id="btnScaleUp">＋</button>
-  <button id="btnScaleDown">－</button>
-
-  <span id="status">等待錨點…</span>
-  <span id="posInfo"></span>
-</div>
-
-<a-scene
-  mindar-image="imageTargetSrc: ./wall-anchor.mind?v=20251113; autoStart: true; missTolerance: 15"
-  color-space="sRGB"
-  renderer="colorManagement: true; physicallyCorrectLights: true"
-  vr-mode-ui="enabled: false"
-  device-orientation-permission-ui="enabled: false">
-
-  <a-assets timeout="30000">
-    <video id="vid" src="./video.mp4"
-           preload="auto"
-           playsinline webkit-playsinline
-           muted
-           crossorigin="anonymous"></video>
-  </a-assets>
-
-  <!-- camera -->
-  <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
-
-  <!-- 4 個錨點：targetIndex 0~3，都掛同一支影片 -->
-  <!-- 小尺寸先對齊，按「切到大牆」之後才放大成整面牆 -->
-  <a-entity id="marker0" class="marker" mindar-image-target="targetIndex: 0">
-    <a-plane class="wall-plane"
-      position="0 0 0"
-      width="0.8" height="0.4"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
-    </a-plane>
-  </a-entity>
-
-  <a-entity id="marker1" class="marker" mindar-image-target="targetIndex: 1">
-    <a-plane class="wall-plane"
-      position="0 0 0"
-      width="0.8" height="0.4"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
-    </a-plane>
-  </a-entity>
-
-  <a-entity id="marker2" class="marker" mindar-image-target="targetIndex: 2">
-    <a-plane class="wall-plane"
-      position="0 0 0"
-      width="0.8" height="0.4"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
-    </a-plane>
-  </a-entity>
-
-  <a-entity id="marker3" class="marker" mindar-image-target="targetIndex: 3">
-    <a-plane class="wall-plane"
-      position="0 0 0"
-      width="0.8" height="0.4"
-      material="shader:flat; src:#vid; side:double; transparent:true; alphaTest:0.01">
-    </a-plane>
-  </a-entity>
-
-</a-scene>
-
 <script>
 const v        = document.getElementById('vid');
 const btnWall  = document.getElementById('btnWall');
@@ -139,13 +6,13 @@ const btnRight = document.getElementById('btnRight');
 const btnUp    = document.getElementById('btnUp');
 const btnDown  = document.getElementById('btnDown');
 
-// 新增旋轉按鈕
+// 旋轉按鈕
 const btnRotL     = document.getElementById('btnRotL');
 const btnRotR     = document.getElementById('btnRotR');
 const btnTiltUp   = document.getElementById('btnTiltUp');
 const btnTiltDown = document.getElementById('btnTiltDown');
 
-// 新增縮放按鈕
+// 縮放按鈕
 const btnScaleUp   = document.getElementById('btnScaleUp');
 const btnScaleDown = document.getElementById('btnScaleDown');
 
@@ -155,10 +22,9 @@ const posInfo  = document.getElementById('posInfo');
 const markers = Array.from(document.querySelectorAll('.marker'));
 const planes  = Array.from(document.querySelectorAll('.wall-plane'));
 
-const NUM = markers.length;
-
 let isWallMode = false;
-let activeMarkerIndex = null; // 目前對到的那一顆錨點 index（0~3 或 null）
+// 👉 同一時間只允許一顆錨點當主角
+let activeMarkerIndex = null;
 
 // 牆的實際尺寸（公尺）
 const WALL_W = 15.14;
@@ -166,26 +32,26 @@ const WALL_H = 3.283;
 
 // 每一顆錨點各自的「牆位置微調值」
 const wallPosList = [
-  { x: 3.10, y: 0.00, z: 0 }, // 錨點 0
-  { x: 1.4, y: 0.0, z: 0 }, // 錨點 1
-  { x: 0.00, y: 0.00, z: 0 }, // 錨點 2
-  { x: -3.40, y: 0.00, z: 0 }  // 錨點 3
+  { x: 3.10,  y: 0.00, z: 0 }, // 錨點 0
+  { x: 1.40,  y: 0.00, z: 0 }, // 錨點 1
+  { x: 0.00,  y: 0.00, z: 0 }, // 錨點 2
+  { x:-3.40,  y: 0.00, z: 0 }  // 錨點 3
 ];
 
 // 每一顆錨點各自的「牆旋轉微調值」（角度，度數）
 const wallRotList = [
-  { x: 0, y: 0, z: 0 }, // 錨點 0
-  { x: 0, y: 0, z: 0 }, // 錨點 1
+  { x: 0,   y: 0, z: 0 }, // 錨點 0
+  { x: 0,   y: 0, z: 0 }, // 錨點 1
   { x: 1.0, y: 0, z: 0 }, // 錨點 2
-  { x: 0, y: 0, z: 0 }  // 錨點 3
+  { x: 0,   y: 0, z: 0 }  // 錨點 3
 ];
 
 // 每一顆錨點各自的縮放倍率
 const wallScaleList = [
   { s: 0.60 }, // 錨點 0
   { s: 0.60 }, // 錨點 1
-  { s: 0.6 }, // 錨點 2
-  { s: 0.6 }  // 錨點 3
+  { s: 0.60 }, // 錨點 2
+  { s: 0.60 }  // 錨點 3
 ];
 
 // 手機互動一次給影片播放權限
@@ -268,21 +134,35 @@ markers.forEach((marker, idx) => {
 
   marker.addEventListener('targetFound', () => {
     console.log('🎯 targetFound', idx);
-    activeMarkerIndex = idx;
+
+    // ⭐ 核心：如果已經有一顆在用，而且不是這一顆 → 直接忽略
+    if (activeMarkerIndex !== null && activeMarkerIndex !== idx) {
+      console.log('🔒 已有活動錨點 #'+activeMarkerIndex+'，忽略 #'+idx);
+      return;
+    }
+
+    // 沒有活動錨點時，才讓這一顆上位
+    if (activeMarkerIndex === null) {
+      activeMarkerIndex = idx;
+      console.log('✅ 設定活動錨點 #'+idx);
+    }
+
     btnWall.disabled = false;
-    statusEl.textContent = `已鎖定錨點 #${idx}，可切到大牆`;
+    statusEl.textContent = `已抓到錨點 #${activeMarkerIndex}，可切到大牆`;
     v.play().catch(()=>{});
+
+    // 確保 plane 顯示
+    plane.object3D.visible = true;
 
     if(isWallMode){
       // 大牆模式下：只顯示這顆錨點的 plane，其餘關掉
       planes.forEach((p, i) => {
-        p.object3D.visible = (i === idx);
+        p.object3D.visible = (i === activeMarkerIndex);
       });
 
-      // 確保位置＋旋轉＋縮放用目前的微調值
-      const pPos   = wallPosList[idx];
-      const pRot   = wallRotList[idx];
-      const pScale = wallScaleList[idx].s;
+      const pPos   = wallPosList[activeMarkerIndex];
+      const pRot   = wallRotList[activeMarkerIndex];
+      const pScale = wallScaleList[activeMarkerIndex].s;
 
       plane.setAttribute('position', `${pPos.x} ${pPos.y} ${pPos.z}`);
       plane.setAttribute('rotation', `${pRot.x} ${pRot.y} ${pRot.z}`);
@@ -294,18 +174,23 @@ markers.forEach((marker, idx) => {
 
   marker.addEventListener('targetLost', () => {
     console.log('⚠ targetLost', idx);
-    statusEl.textContent = `錨點 #${idx} 遺失，請再對準任一錨點`;
+
+    // 如果這顆不是正在用的那一顆 → 忽略
+    if (activeMarkerIndex !== idx) {
+      console.log('忽略非活動錨點 targetLost #'+idx);
+      return;
+    }
+
+    statusEl.textContent = `錨點 #${idx} 遺失，請對準任一錨點`;
     plane.object3D.visible = false;
 
-    // 如果現在 active 就把 active 清掉（等下一顆錨點接力）
-    if(activeMarkerIndex === idx){
-      activeMarkerIndex = null;
-      updatePosLabel();
-    }
+    // 把「活動錨點」清掉，讓下一顆可以接手
+    activeMarkerIndex = null;
+    updatePosLabel();
   });
 });
 
-// 切到大牆：放大所有 plane，實際顯示只顯示「目前對到的那一顆」
+// 切到大牆：放大所有 plane，實際顯示只顯示「目前活動的那一顆」
 btnWall.addEventListener('click', () => {
   if(activeMarkerIndex === null) return;
 
@@ -321,7 +206,7 @@ btnWall.addEventListener('click', () => {
     plane.setAttribute('rotation', `${pRot.x} ${pRot.y} ${pRot.z}`);
     plane.object3D.scale.set(pScale, pScale, pScale);
 
-    // 只顯示當前這一顆錨點的 plane
+    // 只顯示活動錨點的 plane
     plane.object3D.visible = (idx === activeMarkerIndex);
   });
 
@@ -331,7 +216,7 @@ btnWall.addEventListener('click', () => {
   v.play().catch(()=>{});
 });
 
-// 微調函式（左右上下平移）— 只動「目前這一顆錨點」的牆位置
+// 平移微調（只動目前活動錨點）
 function nudge(dx, dy){
   if(!isWallMode) return;
   if(activeMarkerIndex === null) return;
@@ -345,7 +230,7 @@ function nudge(dx, dy){
   updatePosLabel();
 }
 
-// 旋轉微調函式 — 同樣只動「目前這一顆錨點」
+// 旋轉微調
 function nudgeRot(dx, dy, dz){
   if(!isWallMode) return;
   if(activeMarkerIndex === null) return;
@@ -360,13 +245,13 @@ function nudgeRot(dx, dy, dz){
   updatePosLabel();
 }
 
-// 縮放微調函式 — 只動「目前這一顆錨點」的 scale
+// 縮放微調
 function nudgeScale(ds){
   if(!isWallMode) return;
   if(activeMarkerIndex === null) return;
 
   const s = wallScaleList[activeMarkerIndex];
-  s.s = Math.max(0.01, s.s + ds); // 避免縮到 0 或負數
+  s.s = Math.max(0.01, s.s + ds);
 
   const plane = planes[activeMarkerIndex];
   plane.object3D.scale.set(s.s, s.s, s.s);
@@ -385,11 +270,9 @@ btnRotR     .addEventListener('click', () => nudgeRot(0, 0,  1)); // Z 軸順時
 btnTiltUp   .addEventListener('click', () => nudgeRot(-1, 0, 0)); // X 軸上傾 1°
 btnTiltDown .addEventListener('click', () => nudgeRot( 1, 0, 0)); // X 軸下傾 1°
 
- // 縮放按鈕（每次 0.1 倍）
+// 縮放按鈕（每次 0.1 倍）
 btnScaleUp  .addEventListener('click', () => nudgeScale( 0.1));
 btnScaleDown.addEventListener('click', () => nudgeScale(-0.1));
 
 updatePosLabel();
 </script>
-</body>
-</html>
